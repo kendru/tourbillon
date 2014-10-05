@@ -22,7 +22,7 @@
     (let [found-events (get-events *store* 123)]
       (is (= 1 (count found-events)))
       (is (= event (first found-events)))
-      (is (empty? (get-events *store* 456))))))
+      (is (empty? (get-events *store* 124))))))
 
 (deftest test-getting-multiple-events
   (let [event2 (create-event "event2" :job-id 123 {})]

@@ -6,6 +6,12 @@
 (defn ^:dynamic get-time []
   (int (/ (System/currentTimeMillis) 1000)))
 
+(defn exc-inc-range
+  "Gets a numeric range from start (exclusive) to end (inclusive),
+  with an optional step parameter"
+  [start end]
+  (reverse (range end start -1)))
+
 ;; TODO make this polymorphic so that different stores implement
 ;; a protocol with store-event! and get-events
 (defrecord LocalEventStore [map-atom last-check]
@@ -30,8 +36,9 @@
 (defn get-events [store timestamp]
   (let [map-atom (:map-atom store)
         last-check (:last-check store)
-        all-timestamps (range @last-check timestamp)
+        all-timestamps (exc-inc-range @last-check timestamp)
         events (mapcat #(get @map-atom % (list)) all-timestamps)]
+    (println "Getting events in " all-timestamps)
     (swap! map-atom #(apply dissoc % all-timestamps))
     (reset! last-check timestamp)
     events))
