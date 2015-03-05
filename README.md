@@ -27,12 +27,14 @@ Please see the API description page for details of the message specification.
 
 ## Todo
 
+**Priority:** Since persistence will be critical for using Tourbillon for any production app, the first task
+will be implementing pluggable persistence layers via configuration.
+
 1. Add additional "subscribers" that can perform different sorts of tasks
-1. Support a distributed set-up. Ideally, we should be able to run multiple instances in the same JVM, across JVM intances on a single machine, or across JVM instances on multiple machines.
+2. Support a distributed set-up. Ideally, we should be able to run multiple instances in the same JVM, across JVM intances on a single machine, or across JVM instances on multiple machines.
 3. Add authentication and associate jobs with individual accounts
 4. Support HTTP Basic and shared private key/HMAC authentication for Tourbillon as well as for Tourbillon to authenticate with the webhook subscriber
-5. Support pluggable persistence layers, and include a adapters for Redis and Mongo out of the box
-6. Many other things
+5. Support pluggable persistence layers, and include a adapters for Datomic, DynamoDb, Redis, and Mongo out of the box
 
 ## License
 
