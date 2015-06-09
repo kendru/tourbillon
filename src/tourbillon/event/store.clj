@@ -1,10 +1,7 @@
 (ns tourbillon.event.store
   (:require [com.stuartsierra.component :as component]
-            [taoensso.timbre :as log]))
-
-; TODO: Move this into another namespace
-(defn ^:dynamic get-time []
-  (int (/ (System/currentTimeMillis) 1000)))
+            [taoensso.timbre :as log]
+            [tourbillon.utils :as utils]))
 
 (defn exc-inc-range
   "Gets a numeric range from start (exclusive) to end (inclusive),
@@ -44,6 +41,6 @@
     events))
 
 (defn new-store
-  ([map-atom] (new-store map-atom (get-time)))
+  ([map-atom] (new-store map-atom (utils/get-time)))
   ([map-atom last-check] (map->LocalEventStore {:map-atom map-atom
                                                 :last-check (atom last-check)})))

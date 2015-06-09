@@ -1,7 +1,7 @@
 (ns tourbillon.workflow.jobs-test
   (:require [clojure.test :refer :all]
             [tourbillon.workflow.jobs :refer :all]
-            [tourbillon.storage.object :refer [new-object-store find-by-id save! update!]]))
+            [tourbillon.storage.object :refer [new-object-store find-by-id create! update!]]))
 
 (def ^:dynamic *jobstore*)
 (def ^:dynamic *workflowstore*)
@@ -31,18 +31,18 @@
    :data {}})
 
 (deftest test-local-jobstore
-  (testing "Assigns id to job on save"
+  (testing "Assigns id to job on create"
     (let [job (create-job nil [] nil)
-          saved-job (save! *jobstore* job)]
+          saved-job (create! *jobstore* job)]
       (is (not (nil? (:id saved-job))))))
 
   (testing "Can retrieve saved job"
-    (let [saved-job (save! *jobstore* (create-job nil [] nil))
+    (let [saved-job (create! *jobstore* (create-job nil [] nil))
           retrieved-job (find-by-id *jobstore* (:id saved-job))]
       (is (= saved-job retrieved-job))))
 
   (testing "Updates existing job with function"
-    (let [saved-job (save! *jobstore* (create-job nil [] nil))
+    (let [saved-job (create! *jobstore* (create-job nil [] nil))
           updated-job (update! *jobstore* saved-job
                                               #(update-in % [:states] conj :foo))
           retrieved-job (find-by-id *jobstore* (:id saved-job))]
@@ -52,7 +52,7 @@
 
 (deftest test-creating-jobs-from-workflows
   (testing "Creates job using workflow as blueprint"
-    (let [workflow (save! *workflowstore* (create-workflow nil [] :a-state))
+    (let [workflow (create! *workflowstore* (create-workflow nil [] :a-state))
           job (Workflow->Job workflow)]
       (is (nil? (:id job)))
       (is (= :a-state (:current-state job))))))
@@ -60,7 +60,7 @@
 (deftest test-state-transitioning
   (let [transitions [(create-transition :foo :bar "foo->bar")
                      (create-transition :bar :baz "bar->baz")]
-        job (save! *jobstore* (create-job nil transitions :foo))]
+        job (create! *jobstore* (create-job nil transitions :foo))]
 
     (testing "does not change state when event does not match transition"
       (let [new-job (emit! *jobstore* (mk-test-event "bar->baz" job))]

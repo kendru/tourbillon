@@ -1,6 +1,6 @@
 (defproject tourbillon "0.1.0-SNAPSHOT"
   :description "web service for managing application workflows"
-  :url "http://tourbillon.clojurecup.com"
+  :url "https://github.com/kendru/tourbillon"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
@@ -15,6 +15,7 @@
                  [ring/ring-json "0.3.1"]
                  [compojure "1.1.9"]
                  [cheshire "5.3.1"]
+                 [com.novemberain/monger "2.0.0"]
                  [org.clojure/tools.namespace "0.2.7"]
                  [environ "1.0.0"]
                  [overtone/at-at "1.2.0"]]

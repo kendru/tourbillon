@@ -29,9 +29,9 @@
         (POST "/" {{:keys [at every subscriber data]
                     :or {every nil
                          data {}}} :body}
-          (let [job (save! job-store (create-job nil
-                                                 [(create-transition "start" "start" "trigger" [subscriber])]
-                                                 "start"))
+          (let [job (create! job-store (create-job nil
+                                                   [(create-transition "start" "start" "trigger" [subscriber])]
+                                                   "start"))
                 event (create-event "trigger" (:id job) at every data)]
             (send-event! scheduler event)
             (response event))))
@@ -42,7 +42,7 @@
                     :as data} :body}
           (let [job (create-job nil transitions current-state)]
             (response
-              (save! job-store job))))
+              (create! job-store job))))
         
         (context "/:id" [id]
           (GET "/" []
