@@ -5,7 +5,7 @@
             [com.stuartsierra.component :as component]))
 
 (defn with-stubbed-time [test-fn]
-  (binding [tourbillon.event.store/get-time (constantly 5)]
+  (binding [tourbillon.utils/get-time (constantly 5)]
     (test-fn)))
 
 (use-fixtures :once with-stubbed-time)

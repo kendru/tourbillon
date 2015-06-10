@@ -1,3 +1,7 @@
 (ns tourbillon.utils)
 
-(defn uuid [] (str (java.util.UUID/randomUUID)))
+(defn ^:dynamic uuid []
+  (str (java.util.UUID/randomUUID)))
+
+(defn ^:dynamic get-time []
+  (int (/ (System/currentTimeMillis) 1000)))

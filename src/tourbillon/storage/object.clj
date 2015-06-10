@@ -79,8 +79,8 @@
 
 (defmethod new-object-store :mongodb
   [{:keys [mongo-opts db collection serialize-fn unserialize-fn]}]
-  (map->InMemoryObjectStore {:mongo-opts mongo-opts
-                             :db-name db
-                             :collection collection
-                             :serialize-fn serialize-fn
-                             :unserialize-fn unserialize-fn}))
+  (map->MongoDBObjectStore {:mongo-opts mongo-opts
+                            :db-name db
+                            :collection collection
+                            :serialize-fn serialize-fn
+                            :unserialize-fn unserialize-fn}))

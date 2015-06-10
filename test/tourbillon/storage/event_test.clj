@@ -1,18 +1,23 @@
-(ns tourbillon.event.store-test
+(ns tourbillon.storage.event-test
   (:require [clojure.test :refer :all]
             [tourbillon.event.core :refer :all]
-            [tourbillon.event.store :refer :all]))
+            [tourbillon.storage.event :refer :all]
+            [tourbillon.storage.key-value :as kv]))
 
 (def event (create-event "event-id" :job-id 123 {}))
 
 (def ^:dynamic *store*)
 
 (defn with-store [test-fn]
-  (let [store (new-store (atom {}) 122)]
-    (.start store)
-    (binding [*store* store]
+  (let [kv-store (kv/new-kv-store {:type :local
+                                   :db (atom {:last-check-time 120})})
+        store (new-event-store {:type :local
+                                :db (atom {})
+                                :kv-store (.start kv-store)})]
+    (binding [*store* (.start store)]
       (test-fn))
-    (.stop store)))
+    (.stop store)
+    (.stop kv-store)))
 
 (use-fixtures :each with-store)
 

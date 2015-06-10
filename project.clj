@@ -29,4 +29,14 @@
                                  :stacktraces? false,
                                  :auto-reload? false}}
              :dev {:dependencies [[ring-mock "0.1.5"]
-                                  [ring/ring-devel "1.2.2"]]}})
+                                  [ring/ring-devel "1.2.2"]]}}
+
+;; In production, some of these will be overridden by environment variables
+:env {
+      :object-store :mongo
+      :mongo-host "127.0.0.1"
+      :mongo-db "tourbillon"
+      :mongo-collection-workflows "workflows"
+      :mongo-collection-jobs "jobs"
+      :mongo-collection-events "events"
+      })

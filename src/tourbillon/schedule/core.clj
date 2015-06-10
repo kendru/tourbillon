@@ -1,10 +1,11 @@
 (ns tourbillon.schedule.core
   (:require [tourbillon.event.core :refer :all]
-            [tourbillon.event.store :refer [store-event! get-events get-time]]
+            [tourbillon.storage.event :as event]
             [tourbillon.workflow.jobs :refer [emit!]]
             [com.stuartsierra.component :as component]
             [overtone.at-at :as at]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [tourbillon.utils :as utils]))
 
 (defmulti send-event!
   (fn [scheduler event]
@@ -20,17 +21,17 @@
 (defmethod send-event! :delayed [scheduler event]
   (let [event-store (:event-store scheduler)]
     (log/info ["processing event later" event])
-    (store-event! event-store event)))
+    (event/store-event! event-store event)))
 
 (defn process-events!
   "Gets any new events from the event store and sends them to their respective jobs"
   [{:keys [job-store event-store]}]
-  (let [events (get-events event-store (get-time))]
+  (let [events (event/get-events event-store (utils/get-time))]
     (when-not (empty? events)
       (doseq [event events]
         (emit! job-store event)
         (when (is-recurring? event)
-          (store-event! event-store (next-interval event)))))))
+          (event/store-event! event-store (next-interval event)))))))
 
 (defrecord Scheduler [poll-freq thread-pool job-store event-store scheduler]
   component/Lifecycle
