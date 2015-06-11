@@ -6,6 +6,11 @@
 (def ^:dynamic *jobstore*)
 (def ^:dynamic *workflowstore*)
 
+(def stub-subscriber-system
+  (reify
+    tourbillon.workflow.subscribers/SubscriberSystem
+    (notify-all! [_ _ _])))
+
 (defn with-local-storage [test-fn]
   (let [jobstore (new-object-store {:type :local
                                     :db (atom {})
@@ -63,9 +68,9 @@
         job (create! *jobstore* (create-job nil nil transitions :foo))]
 
     (testing "does not change state when event does not match transition"
-      (let [new-job (emit! *jobstore* (mk-test-event "bar->baz" job))]
+      (let [new-job (emit! *jobstore* stub-subscriber-system (mk-test-event "bar->baz" job))]
         (is (= :foo (:current-state new-job)))))
 
     (testing "changes states when event matches transition"
-      (let [new-job (emit! *jobstore* (mk-test-event "foo->bar" job))]
+      (let [new-job (emit! *jobstore* stub-subscriber-system (mk-test-event "foo->bar" job))]
         (is (= :bar (:current-state new-job)))))))

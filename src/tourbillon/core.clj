@@ -4,6 +4,7 @@
             [tourbillon.storage.object :refer [new-object-store]]
             [tourbillon.storage.event :refer [new-event-store]]
             [tourbillon.schedule.core :refer [new-scheduler]]
+            [tourbillon.workflow.subscribers :refer [new-subscriber-system]]
             [tourbillon.workflow.jobs :refer [map->Job map->Workflow]]
             [overtone.at-at :refer [mk-pool]]
             [com.stuartsierra.component :as component]))
@@ -49,15 +50,22 @@
                                         :mongo-opts mongo-opts
                                         :serialize-fn identity
                                         :unserialize-fn identity})
+      :template-store (new-object-store {:type :mongodb
+                                         :db "tourbillon"
+                                         :collection "templates"
+                                         :mongo-opts mongo-opts})
       :event-store (component/using
                      (new-event-store {:type :mongodb
                                        :db "tourbillon"
                                        :collection "events"
                                        :mongo-opts mongo-opts})
                      [:kv-store])
+      :subscriber-system (component/using
+                           (new-subscriber-system)
+                           [:template-store])
       :scheduler (component/using
                    (new-scheduler 1000 (mk-pool))
-                   [:job-store :event-store])
+                   [:job-store :event-store :subscriber-system])
       :webserver (component/using
                    (new-server ip port)
-                   [:job-store :account-store :scheduler]))))
+                   [:job-store :account-store :template-store :scheduler]))))

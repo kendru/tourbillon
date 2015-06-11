@@ -7,6 +7,7 @@
   :repl-options {:init-ns user}
 
   :dependencies [[org.clojure/clojure "1.6.0"]
+                 [org.clojure/core.memoize "0.5.6"]
                  [com.stuartsierra/component "0.2.2"]
                  [http-kit "2.1.16"]
                  [com.taoensso/timbre "3.3.1"]
@@ -15,6 +16,7 @@
                  [ring/ring-json "0.3.1"]
                  [buddy/buddy "0.5.4"]
                  [slingshot "0.12.2"]
+                 [stencil "0.3.5"]
                  [crypto-random "1.2.0"]
                  [compojure "1.1.9"]
                  [cheshire "5.3.1"]

@@ -4,9 +4,11 @@
             [compojure.core :refer :all]
             [compojure.route :as route]
             [compojure.handler :as handler]
+            [ring.util.request :refer [body-string]]
             [ring.util.response :refer [response not-found content-type resource-response]]
             [ring.middleware.params :refer :all]
             [ring.middleware.json :refer :all]
+            [slingshot.slingshot :refer [try+]]
             [buddy.auth :refer [throw-unauthorized]]
             [buddy.auth.middleware :refer [wrap-authentication wrap-authorization]]
             [buddy.auth.accessrules :refer [wrap-access-rules]]
@@ -16,6 +18,7 @@
             [tourbillon.storage.object :refer :all]
             [tourbillon.auth.accounts :as accounts]
             [tourbillon.auth.core :as auth]
+            [tourbillon.template.core :as template]
             [taoensso.timbre :as log]))
 
 (def access-rules [{:uris ["/" "/api/api-keys" "/api/session-tokens"]
@@ -39,9 +42,18 @@
                     :handler (auth/restrict-to "get-jobs")}
                    {:uri "/api/jobs/:id"
                     :request-method :post
-                    :handler (auth/restrict-to "create-events")}])
+                    :handler (auth/restrict-to "create-events")}
+                   {:uri "/api/templates"
+                    :request-method :post
+                    :handler (auth/restrict-to "create-templates")}
+                  {:uri "/api/templates/:id"
+                    :request-method :get
+                    :handler (auth/restrict-to "get-templates")}])
 
-(defn app-routes [job-store account-store scheduler]
+(defn- json-request? [req]
+  (= "application/json" (get-in req [:headers "content-type"])))
+
+(defn app-routes [job-store account-store template-store scheduler]
   (routes
     (GET "/" [] (content-type
                   (resource-response "index.html" {:root "public"})
@@ -50,14 +62,14 @@
     (route/resources "/assets")
 
     (context "/api" {{:keys [api-key]} :identity}
-      ; (context "/workflows" []
-      ;   (POST "/" {data :body}
-      ;     ()))
-
       (POST "/api-keys" []
             (response (accounts/create-api-key! account-store)))
       (POST "/session-tokens" {{:keys [api-key api-secret]} :body}
             (response (accounts/create-session-token account-store api-key api-secret)))
+
+      ; (context "/workflows" []
+      ;   (POST "/" {data :body}
+      ;     ()))
 
       (context "/events" []
         (POST "/" {{:keys [at every subscriber data]
@@ -90,17 +102,28 @@
             (if-let [job (find-by-id job-store id)]
               (response
                 (emit! job-store (create-event event id data)))
-              (not-found {:status "error" :msg "No such job"}))))))
+              (not-found {:status "error" :msg "No such job"})))))
+
+      (context "/templates" []
+        (POST "/" {:as req}
+          (let [text (if (json-request? req)
+                       (get-in req [:body :text])
+                       (body-string req))]
+            (println "Template text:" text)
+            (try+
+              (response {:id (template/create-template! template-store api-key text)})
+              (catch Object _
+                template/malformed-template-response))))))
 
     (not-found {:status "error" :msg "Not found"})))
 
-(defrecord Webserver [ip port connection job-store account-store scheduler]
+(defrecord Webserver [ip port connection job-store account-store template-store scheduler]
   component/Lifecycle
 
   (start [component]
     (log/info "Starting web server")
 
-    (let [app (-> (app-routes job-store account-store scheduler)
+    (let [app (-> (app-routes job-store account-store template-store scheduler)
                   handler/api
                   (wrap-access-rules {:rules access-rules :on-error auth/on-error})
                   (wrap-authorization auth/backend)

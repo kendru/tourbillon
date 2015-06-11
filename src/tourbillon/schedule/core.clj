@@ -14,26 +14,26 @@
       :delayed)))
 
 (defmethod send-event! :immediate [scheduler event]
-  (let [job-store (:job-store scheduler)]
+  (let [{:keys [job-store subscriber-system]} scheduler]
     (log/info ["processing event now" event])
-    (emit! job-store event)))
+    (emit! job-store subscriber-system event)))
 
 (defmethod send-event! :delayed [scheduler event]
-  (let [event-store (:event-store scheduler)]
+  (let [{:keys [event-store subscriber-system]} scheduler]
     (log/info ["processing event later" event])
     (event/store-event! event-store event)))
 
 (defn process-events!
   "Gets any new events from the event store and sends them to their respective jobs"
-  [{:keys [job-store event-store]}]
+  [{:keys [job-store event-store subscriber-system]}]
   (let [events (event/get-events event-store (utils/get-time))]
     (when-not (empty? events)
       (doseq [event events]
-        (emit! job-store event)
+        (emit! job-store subscriber-system event)
         (when (is-recurring? event)
           (event/store-event! event-store (next-interval event)))))))
 
-(defrecord Scheduler [poll-freq thread-pool job-store event-store scheduler]
+(defrecord Scheduler [poll-freq thread-pool job-store event-store subscriber-system scheduler]
   component/Lifecycle
 
   (start [component]

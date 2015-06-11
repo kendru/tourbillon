@@ -41,13 +41,13 @@
 (defrecord MongoDBObjectStore [mongo-opts db-name collection serialize-fn unserialize-fn conn db]
   component/Lifecycle
   (start [component]
-    (log/info "Starting MongoDB object store")
+    (log/info (str "Starting MongoDB object store (" db-name "/" collection ")"))
     (let [conn (mg/connect mongo-opts)]
       (assoc component :conn conn
                        :db (mg/get-db conn db-name))))
 
   (stop [component]
-    (log/info "Stopping MongoDB object store")
+    (log/info (str "Stopping MongoDB object store (" db-name "/" collection ")"))
     (mg/disconnect (:conn component))
     (assoc component :db nil :conn nil))
 
@@ -71,14 +71,18 @@
 (defmulti new-object-store :type)
 
 (defmethod new-object-store :local
-  [{:keys [db serialize-fn unserialize-fn]}]
+  [{:keys [db serialize-fn unserialize-fn]
+    :or {serialize-fn identity
+         unserialize-fn identity}}]
   (map->InMemoryObjectStore {:db db
                              :serialize-fn serialize-fn
                              :unserialize-fn unserialize-fn
                              :autoincrement (atom 0)}))
 
 (defmethod new-object-store :mongodb
-  [{:keys [mongo-opts db collection serialize-fn unserialize-fn]}]
+  [{:keys [mongo-opts db collection serialize-fn unserialize-fn]
+    :or {serialize-fn identity
+         unserialize-fn identity}}]
   (map->MongoDBObjectStore {:mongo-opts mongo-opts
                             :db-name db
                             :collection collection

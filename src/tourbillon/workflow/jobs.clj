@@ -36,10 +36,10 @@
 
 ;; TODO: the responsibility of updating the job in the jobstore does not
 ;; seem natural here. See if there is a better place to refactor it.
-(defn emit! [jobstore event]
+(defn emit! [jobstore subscriber-system event]
   (when-let [job (find-by-id jobstore (:job-id event))]
     (if-let [transition (get-valid-transition job event)]
       (let [new-job (update! jobstore job #(assoc % :current-state (:to transition)))]
-        (subscribers/notify-all! (:subscribers transition) (:data event))
+        (subscribers/notify-all! subscriber-system (:subscribers transition) (:data event))
         new-job)
       job)))

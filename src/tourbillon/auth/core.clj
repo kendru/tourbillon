@@ -7,7 +7,7 @@
             [buddy.auth.backends.token :refer [jws-backend]]
             [clj-time.core :as time]))
 
-(def default-permissions #{"get-jobs" "get-workflows" "create-jobs" "create-workflows" "create-events"})
+(def default-permissions #{"get-jobs" "get-workflows" "create-jobs" "create-workflows" "create-events" "get-templates" "create-templates"})
 
 (defn make-random-key [] (random/base64 32))
 
