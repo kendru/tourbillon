@@ -10,13 +10,13 @@
                              :on on
                              :subscribers subscribers}))
 
-(defrecord Workflow [id transitions start-state])
-(defn create-workflow [id transitions start-state]
-  (Workflow. id transitions start-state))
+(defrecord Workflow [id api-key transitions start-state])
+(defn create-workflow [id api-key transitions start-state]
+  (Workflow. id api-key transitions start-state))
 
-(defrecord Job [id transitions current-state])
-(defn create-job [id transitions current-state]
-  (Job. id transitions current-state))
+(defrecord Job [id api-key transitions current-state])
+(defn create-job [id api-key transitions current-state]
+  (Job. id api-key transitions current-state))
 
 (defn Workflow->Job [workflow]
   (-> workflow

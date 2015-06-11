@@ -43,6 +43,12 @@
                                          :mongo-opts mongo-opts
                                          :serialize-fn (partial into {})
                                          :unserialize-fn map->Workflow})
+      :account-store (new-object-store {:type :mongodb
+                                        :db "tourbillon"
+                                        :collection "accounts"
+                                        :mongo-opts mongo-opts
+                                        :serialize-fn identity
+                                        :unserialize-fn identity})
       :event-store (component/using
                      (new-event-store {:type :mongodb
                                        :db "tourbillon"
@@ -54,4 +60,4 @@
                    [:job-store :event-store])
       :webserver (component/using
                    (new-server ip port)
-                   [:job-store :scheduler]))))
+                   [:job-store :account-store :scheduler]))))

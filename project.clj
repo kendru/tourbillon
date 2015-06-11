@@ -13,6 +13,9 @@
                  [ring-server "0.3.1"]
                  [ring/ring-ssl "0.2.1"]
                  [ring/ring-json "0.3.1"]
+                 [buddy/buddy "0.5.4"]
+                 [slingshot "0.12.2"]
+                 [crypto-random "1.2.0"]
                  [compojure "1.1.9"]
                  [cheshire "5.3.1"]
                  [com.novemberain/monger "2.0.0"]
@@ -39,4 +42,5 @@
       :mongo-collection-workflows "workflows"
       :mongo-collection-jobs "jobs"
       :mongo-collection-events "events"
+      :hmac-secret "s3cr3t"
       })

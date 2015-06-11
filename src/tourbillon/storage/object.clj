@@ -57,7 +57,7 @@
       (unserialize-fn (rename-keys obj {:_id :id}))))
 
   (create! [this obj]
-    (let [id (utils/uuid)]
+    (let [id (or (:id obj) (utils/uuid))]
       (mc/insert (:db this) (:collection this) (assoc obj :_id id))
       (assoc obj :id id)))
 
