@@ -28,17 +28,17 @@ Please see the API description page for details of the message specification.
 ## Todo
 
 1. Support a distributed set-up. Ideally, we should be able to run multiple instances in the same JVM, across JVM intances on a single machine, or across JVM instances on multiple machines.
-2. Add authentication and associate jobs with individual accounts
-3. Support pluggable persistence layers, and include a adapters for in-memory, SQL, DynamoDb, Redis, and Mongo out of the box (note that in-memory and Mongo are now supported)
-4. Create client library
-5. Support JWS client authentication
+2. ~~Add authentication and associate jobs with individual accounts~~
+3. Support pluggable persistence layers, and include a adapters for ~~in-memory~~, SQL, DynamoDb, Redis, and ~~Mongo~~ out of the box (note that in-memory and Mongo are now supported)
+4. *Create client library*
+5. ~~Support JWS client authentication~~
 6. Track API requests per-API token
 7. Create interface for provisioning tokens
-8. Add SMS subscriber
-9. Create templates that can be used with email, webhook, or SMS subscribers
+8. *Add SMS subscriber*
+9. *Create templates that can be used with email, webhook, or SMS subscribers*
 10. Support multiple auth methods that tourbillon can use with webhook subscriber
 11. Add additional "subscribers" that can perform different sorts of tasks
-12. Complete workflow functionality w/ HTTP interface
+12. *Complete workflow functionality w/ HTTP interface*
 
 ## License
 
