@@ -26,12 +26,9 @@
                  [environ "1.0.0"]
                  [overtone/at-at "1.2.0"]]
 
-  :main tourbillon.main
-
   :plugins [[lein-environ "1.0.0"]]
 
-  :profiles {:uberjar {:aot :all},
-             :production {:ring {:open-browser? false
+  :profiles {:production {:ring {:open-browser? false
                                  :stacktraces? false,
                                  :auto-reload? false}}
              :dev {:dependencies [[ring-mock "0.1.5"]
