@@ -6,14 +6,13 @@
             [environ.core :refer [env]]))
 
 (log/set-config! [:appenders :spit :enabled?] true)
-(log/set-config! [:shared-appender-config :spit-filename] (get env :log-file "/var/log/tourbillon.log"))
+(log/set-config! [:shared-appender-config :spit-filename] (get env :log-file))
 
 (defn -main
   "Start application with a given number of worker processes and optionally
   a webserver for a sample client application."
   [& args]
-  (let [[ip port] args]
-    (log/info "Starting system")
+  (let [env (or (first args) "dev")]
+    (log/info (str "Starting system in " env))
     (component/start
-     (system {:ip ip
-              :port (read-string port)}))))
+     (system {:app-env (get env :app-env)}))))

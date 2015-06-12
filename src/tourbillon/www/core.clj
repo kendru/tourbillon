@@ -19,6 +19,7 @@
             [tourbillon.auth.accounts :as accounts]
             [tourbillon.auth.core :as auth]
             [tourbillon.template.core :as template]
+            [tourbillon.utils :as utils]
             [taoensso.timbre :as log]))
 
 (def access-rules [{:uris ["/" "/api/api-keys" "/api/session-tokens"]
@@ -73,13 +74,13 @@
 
       (context "/events" []
         (POST "/" {{:keys [at every subscriber data]
-                    :or {every nil
-                         data {}}} :body}
-              (let [self-transition (create-transition "start" "start" "trigger" [subscriber])
-                job (create! job-store (create-job nil api-key [self-transition] "start"))
-                event (create-event "trigger" (:id job) at every data)]
-            (send-event! scheduler event)
-            (response event))))
+                    :or {data {}}} :body}
+              (let [self-transition (create-transition "start" "start" "trigger" [subscriber]
+                    at (when at (max at (+ 1 (utils/get-time)))))
+                    job (create! job-store (create-job nil api-key [self-transition] "start"))
+                    event (create-event "trigger" (:id job) at every data)]
+                (send-event! scheduler event)
+                (response event))))
       (context "/jobs" []
         (POST "/" {{:keys [transitions current-state]
                     :or {transitions []
@@ -139,5 +140,5 @@
         (connection)
         (dissoc component :connection)))
 
-(defn new-server [ip port]
+(defn new-server [{:keys [ip port]}]
   (map->Webserver {:ip ip :port port}))

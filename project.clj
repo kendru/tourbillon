@@ -39,8 +39,16 @@
 
 ;; In production, some of these will be overridden by environment variables
 :env {
+      ;; Global/environment
+      :app-env "dev"
+      :kv-store-type "local"
+      :object-store-type "mongodb"
+      
+      ;; Web server
+      :web-ip "0.0.0.0"
+      :web-port "3000"
+
       ;; Storage
-      :object-store "mongo"
       :mongo-host "127.0.0.1"
       :mongo-db "tourbillon"
       :mongo-collection-workflows "workflows"
@@ -61,4 +69,7 @@
       :twilio-sid "REPLACEME"
       :twilio-auth-token "REPLACEME"
       :twilio-sender "REPLACEME"
+
+      ;; Misc
+      :log-file "/var/log/tourbillon.log"
       })
