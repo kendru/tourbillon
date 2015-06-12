@@ -3,7 +3,10 @@
             [org.httpkit.client :as http]
             [taoensso.timbre :as log]
             [clojure.string :refer [lower-case]]
-            [slingshot.slingshot :refer [throw+]]
+            [environ.core :refer [env]]
+            [slingshot.slingshot :refer [try+ throw+]]
+            [postal.core :as postal]
+            [org.httpkit.client :as http]
             [tourbillon.template.core :refer [render-template]]))
 
 (defprotocol SubscriberHandler
@@ -15,11 +18,40 @@
           SubscriberHandler
           (notify! [_ subscriber data] (log/info data))
           (get-required-params [_] nil))
+
    :email (reify
             SubscriberHandler
-            (notify! [_ {:keys [recipient subject]} data]
-              (log/info (str "emailing <" recipient ">: " subject ". DATA: " data)))
+            (notify! [_ {:keys [recipient sender subject body]
+                         :or {sender (get env :smtp-sender)}} data]
+              (let [result (postal/send-message {:user (get env :smtp-user)
+                                      :pass (get env :smtp-pass)
+                                      :host (get env :smtp-host)
+                                      :port (Integer/parseInt (get env :smtp-port))}
+                                     {:from sender
+                                      :to recipient
+                                      :subject subject
+                                      :body body})]
+                (log/info "Sent email" recipient result)))
             (get-required-params [_] #{:recipient :subject :body}))
+
+   :sms (reify
+          SubscriberHandler
+          (notify! [_ {:keys [recipient body]} data]
+            (try+
+              (http/post (str "https://api.twilio.com/2010-04-01/Accounts/" (get env :twilio-sid) "/Messages.json")
+                         {:timeout 1000
+                          :basic-auth [(get env :twilio-sid) (get env :twilio-auth-token)]
+                          :form-params {"From" (get env :twilio-sender)
+                                        "To" recipient
+                                        "Body" body}}
+                         (fn [{:keys [status body error]}]
+                          (if error
+                            (log/warn "Error sending sms" error)
+                            (log/info "Sent sms" recipient body))))
+              (catch Object e
+                (log/error "Error sending sms" (.getMessage e)))))
+          (get-required-params [_] #{:recipient :body}))
+
    :webhook (reify
               SubscriberHandler
               (notify! [_ {:keys [url method]} data]

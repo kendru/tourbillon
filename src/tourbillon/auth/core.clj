@@ -25,7 +25,6 @@
 (defn unsign-token [token]
   (jws/unsign token secret))
 
-
 ;; Auth handlers
 
 (def any-access (constantly (success)))

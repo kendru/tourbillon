@@ -40,6 +40,7 @@
   (when-let [job (find-by-id jobstore (:job-id event))]
     (if-let [transition (get-valid-transition job event)]
       (let [new-job (update! jobstore job #(assoc % :current-state (:to transition)))]
-        (subscribers/notify-all! subscriber-system (:subscribers transition) (:data event))
+        (future
+          (subscribers/notify-all! subscriber-system (:subscribers transition) (:data event)))
         new-job)
       job)))

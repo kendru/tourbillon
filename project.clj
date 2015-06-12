@@ -20,6 +20,7 @@
                  [crypto-random "1.2.0"]
                  [compojure "1.1.9"]
                  [cheshire "5.3.1"]
+                 [com.draines/postal "1.11.3"]
                  [com.novemberain/monger "2.0.0"]
                  [org.clojure/tools.namespace "0.2.7"]
                  [environ "1.0.0"]
@@ -38,11 +39,26 @@
 
 ;; In production, some of these will be overridden by environment variables
 :env {
-      :object-store :mongo
+      ;; Storage
+      :object-store "mongo"
       :mongo-host "127.0.0.1"
       :mongo-db "tourbillon"
       :mongo-collection-workflows "workflows"
       :mongo-collection-jobs "jobs"
       :mongo-collection-events "events"
+
+      ;; Security
       :hmac-secret "s3cr3t"
+
+      ;; Email subscriber
+      :smtp-host "REPLACEME"
+      :smtp-user "REPLACEME"
+      :smtp-pass "REPLACEME"
+      :smtp-port "REPLACEME"
+      :smtp-sender "REPLACEME"
+
+      ;; SMS subscriber
+      :twilio-sid "REPLACEME"
+      :twilio-auth-token "REPLACEME"
+      :twilio-sender "REPLACEME"
       })
