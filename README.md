@@ -34,8 +34,8 @@ Please see the API description page for details of the message specification.
 5. ~~Support JWS client authentication~~
 6. Track API requests per-API token
 7. Create interface for provisioning tokens
-8. *Add SMS subscriber*
-9. *Create templates that can be used with email, webhook, or SMS subscribers*
+8. ~~Add SMS subscriber~~
+9. ~~Create templates that can be used with email, webhook, or SMS subscribers~~
 10. Support multiple auth methods that tourbillon can use with webhook subscriber
 11. Add additional "subscribers" that can perform different sorts of tasks
 12. *Complete workflow functionality w/ HTTP interface*
