@@ -62,6 +62,27 @@
       (is (nil? (:id job)))
       (is (= :a-state (:current-state job))))))
 
+;; TODO
+(deftest updating-transitions
+  (let [transitions [(create-transition :foo :bar "foo->bar")
+                     (create-transition :bar :baz "bar->baz")]
+        job (create-job nil nil transitions :foo)]
+    
+    (testing "Adds a new transition to a job"
+      (let [transition (create-transition :foo :baz "foo->baz" [{:a "subscriber"}])
+            updated-job (add-transition job transition)]
+        (is (= updated-job (update-in job [:transitions] conj transition)))))
+
+    (testing "Removes a transition from a job"
+      (let [transition (create-transition :bar :baz "bar->baz")
+            updated-job (remove-transition job transition)]
+        (is (= updated-job (create-job nil nil [(create-transition :foo :bar "foo->bar")] :foo)))))
+
+    (testing "Updates a transition's subscribers"
+      (let [transition (assoc (first transitions) :subscribers {:some "subscriber"})
+            updated-job (update-subscribers job transition)]
+        (is (= transition (first (:transitions updated-job))))))))
+
 (deftest test-state-transitioning
   (let [transitions [(create-transition :foo :bar "foo->bar")
                      (create-transition :bar :baz "bar->baz")]
@@ -74,3 +95,25 @@
     (testing "changes states when event matches transition"
       (let [new-job (emit! *jobstore* stub-subscriber-system (mk-test-event "foo->bar" job))]
         (is (= :bar (:current-state new-job)))))))
+
+(deftest getting-current-state
+  (let [transitions [(create-transition :foo :bar "foo->bar")
+                     (create-transition :foo :baz "foo->baz")
+                     (create-transition :bar :baz "bar->baz")]
+        job (create! *jobstore* (create-job nil nil transitions :foo))]
+
+    (testing "Gets all transitions for initial state"
+      (is (= [{:to :bar :on "foo->bar" :subscribers []}
+              {:to :baz :on "foo->baz" :subscribers []}]
+             (get-current-transitions job))))
+
+    (testing "Gets all transitions for non-initial-state state"
+      (let [updated-job (assoc job :current-state :bar)]
+        (is (= [{:to :baz :on "bar->baz" :subscribers []}]
+               (get-current-transitions updated-job)))))
+
+    (testing "Gets state and transitions"
+      (is (= {:state :foo
+              :transitions [{:to :bar :on "foo->bar" :subscribers []}
+                            {:to :baz :on "foo->baz" :subscribers []}]}
+             (get-current-state job))))))

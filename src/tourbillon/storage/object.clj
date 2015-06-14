@@ -58,7 +58,7 @@
 
   (create! [this obj]
     (let [id (or (:id obj) (utils/uuid))]
-      (mc/insert (:db this) (:collection this) (assoc obj :_id id))
+      (mc/insert (:db this) (:collection this) (-> obj (assoc :_id id) (dissoc :id)))
       (assoc obj :id id)))
 
   (update! [this obj update-fn]

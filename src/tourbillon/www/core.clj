@@ -12,7 +12,7 @@
             [buddy.auth :refer [throw-unauthorized]]
             [buddy.auth.middleware :refer [wrap-authentication wrap-authorization]]
             [buddy.auth.accessrules :refer [wrap-access-rules]]
-            [tourbillon.workflow.jobs :refer [create-job create-transition emit!]]
+            [tourbillon.workflow.jobs :refer [create-job create-transition get-current-state add-transition remove-transition update-subscribers emit!]]
             [tourbillon.event.core :refer [create-event]]
             [tourbillon.schedule.core :refer [send-event!]]
             [tourbillon.storage.object :refer :all]
@@ -90,6 +90,7 @@
             (response
               (create! job-store job))))
         
+        ;; TODO: Refactor the checks for job existence and api key match into middleware
         (context "/:id" [id]
           (GET "/" []
             (if-let [job (find-by-id job-store id)]
@@ -98,11 +99,47 @@
                 (throw-unauthorized "Job does not match api key"))
 
               (not-found {:status "error" :msg "No such job"})))
+
+          ;; Returns {:state current-state :transitions [{:to target-state :on event :subscribers [subscriber}]
+          (GET "/current-state" []
+            (if-let [job (find-by-id job-store id)]
+              (if (= (:api-key job) api-key)
+                (response (get-current-state job))
+                (throw-unauthorized "Job does not match api key"))
+              (not-found {:status "error" :msg "No such job"})))
         
           (POST "/" {{:keys [event data]} :body}
             (if-let [job (find-by-id job-store id)]
-              (response
-                (emit! job-store (create-event event id data)))
+              (if (= (:api-key job) api-key)
+                (response
+                  (emit! job-store (create-event event id data)))
+                (throw-unauthorized "Job does not match api key"))
+              (not-found {:status "error" :msg "No such job"})))
+
+          ;; Creates a new transition and returns the updated job
+          (POST "/transitions" {transition :body}
+            (if-let [job (find-by-id job-store id)]
+              (if (= (:api-key job) api-key)
+                (response
+                  (update! job-store job #(add-transition % transition)))
+                (throw-unauthorized "Job does not match api key"))
+              (not-found {:status "error" :msg "No such job"})))
+
+          (PUT "/transitions" {transition :body}
+            (if-let [job (find-by-id job-store id)]
+              (if (= (:api-key job) api-key)
+                (response
+                  (update! job-store job #(update-subscribers % transition)))
+                (throw-unauthorized "Job does not match api key"))
+              (not-found {:status "error" :msg "No such job"})))
+
+          ;; Removes transition from job
+          (DELETE "/transitions" {transition :body}
+            (if-let [job (find-by-id job-store id)]
+              (if (= (:api-key job) api-key)
+                (response
+                  (update! job-store job #(remove-transition % transition)))
+                (throw-unauthorized "Job does not match api key"))
               (not-found {:status "error" :msg "No such job"})))))
 
       (context "/templates" []
@@ -110,7 +147,6 @@
           (let [text (if (json-request? req)
                        (get-in req [:body :text])
                        (body-string req))]
-            (println "Template text:" text)
             (try+
               (response {:id (template/create-template! template-store api-key text)})
               (catch Object _
