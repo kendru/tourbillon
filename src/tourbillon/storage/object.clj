@@ -2,9 +2,15 @@
   (:require [com.stuartsierra.component :as component]
             [monger.core :as mg]
             [monger.collection :as mc]
+            [clojure.java.jdbc :as sql]
+            [cheshire.core :as json]
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
-            [tourbillon.utils :as utils]))
+            [tourbillon.utils :as utils]
+            [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
+
+(defn- parse-with-kw [string]
+  (json/parse-string string true))
 
 (defprotocol ObjectStore
   (find-by-id [this id])
@@ -68,6 +74,41 @@
           (rename-keys updated {:id :_id}))
         updated))))
 
+(defrecord SQLObjectStore [db-spec table serialize-fn unserialize-fn conn]
+  component/Lifecycle
+  (start [component]
+    (log/info "Starting SQL object store (" table ")")
+    (assoc component :conn (mk-connection-pool db-spec)))
+  
+  (stop [component]
+    (log/info "Stopping SQL object store (" table ")")
+    (assoc component :conn nil))
+
+  ObjectStore
+  (find-by-id [this id]
+    (some-> (select-row conn table id)
+            (get :data)
+            parse-with-kw
+            (assoc :id id)
+            unserialize-fn))
+
+  (create! [this obj]
+    (let [id (or (:id obj) (utils/uuid))]
+      (sql/insert! conn table {:id id :data (-> obj serialize-fn (dissoc :id) json/generate-string)})
+      (assoc obj :id id)))
+
+  (update! [this obj update-fn]
+    (sql/with-db-transaction [t-conn conn]
+      (when-let [retrieved (select-row t-conn table (:id obj))]
+        (let [updated (-> retrieved
+                          (get :data)
+                          parse-with-kw
+                          unserialize-fn
+                          update-fn)]
+          (sql/update! t-conn table {:data (-> updated serialize-fn json/generate-string)}
+                       ["id = ?" (:id obj)])
+          updated)))))
+
 (defmulti new-object-store :type)
 
 (defmethod new-object-store :local
@@ -80,11 +121,20 @@
                              :autoincrement (atom 0)}))
 
 (defmethod new-object-store :mongodb
-  [{:keys [mongo-opts db collection serialize-fn unserialize-fn]
+  [{:keys [mongo-opts db domain serialize-fn unserialize-fn]
     :or {serialize-fn identity
          unserialize-fn identity}}]
   (map->MongoDBObjectStore {:mongo-opts mongo-opts
                             :db-name db
-                            :collection collection
+                            :collection domain
                             :serialize-fn serialize-fn
                             :unserialize-fn unserialize-fn}))
+
+(defmethod new-object-store :sql
+  [{:keys [db-spec domain serialize-fn unserialize-fn]
+    :or {serialize-fn identity
+         unserialize-fn identity}}]
+  (map->SQLObjectStore {:db-spec db-spec
+                        :table domain
+                        :serialize-fn serialize-fn
+                        :unserialize-fn unserialize-fn}))

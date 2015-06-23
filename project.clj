@@ -22,6 +22,9 @@
                  [cheshire "5.3.1"]
                  [com.draines/postal "1.11.3"]
                  [com.novemberain/monger "2.0.0"]
+                 [org.clojure/java.jdbc "0.3.7"]
+                 [org.postgresql/postgresql "9.4-1201-jdbc41"]
+                 [com.mchange/c3p0 "0.9.2.1"]
                  [org.clojure/tools.namespace "0.2.7"]
                  [environ "1.0.0"]
                  [overtone/at-at "1.2.0"]]
@@ -39,7 +42,8 @@
       ;; Global/environment
       :app-env "dev"
       :kv-store-type "local"
-      :object-store-type "mongodb"
+      :object-store-type "sql"
+      :event-store-type "sql"
       
       ;; Web server
       :web-ip "0.0.0.0"
@@ -51,6 +55,14 @@
       :mongo-collection-workflows "workflows"
       :mongo-collection-jobs "jobs"
       :mongo-collection-events "events"
+
+      :sql-classname "org.postgresql.Driver"
+      :sql-subprotocol "postgresql"
+      :sql-host "127.0.0.1"
+      :sql-port "5432"
+      :sql-database "tourbillon"
+      :sql-user "tourbillon"
+      :sql-password "tourbillon"
 
       ;; Security
       :hmac-secret "s3cr3t"

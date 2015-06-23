@@ -1,6 +1,7 @@
 (ns tourbillon.workflow.jobs
   (:require [tourbillon.workflow.subscribers :as subscribers]
             [tourbillon.storage.object :refer [find-by-id update!]]
+            [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]))
 
 ;; TODO: Create record type for Transition

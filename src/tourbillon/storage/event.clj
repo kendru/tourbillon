@@ -3,11 +3,14 @@
             [monger.core :as mg]
             [monger.collection :as mc]
             [monger.operators :refer :all]
+            [clojure.java.jdbc :as sql]
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
+            [cheshire.core :as json]
             [tourbillon.utils :as utils]
             [tourbillon.event.core :refer [map->Event]]
-            [tourbillon.storage.key-value :as kv]))
+            [tourbillon.storage.key-value :as kv]
+            [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
 
 (defn exc-inc-range
   "Gets a numeric range from start (exclusive) to end (inclusive),
@@ -84,6 +87,42 @@
       (kv/set-val! kv-store :last-check-time timestamp)
       events)))
 
+(defrecord SQLEventStore [db-spec table kv-store conn]
+  component/Lifecycle
+  (start [component]
+    (log/info "Starting SQL event store (" table ")")
+    (assoc component :conn (mk-connection-pool db-spec)))
+
+  (stop [component]
+    (log/info "Stopping SQL event store(" table ")")
+    (assoc component :conn nil))
+
+  EventStore
+  (store-event! [this event]
+    (let [{:keys [id job-id start interval data]} event]
+      (sql/insert! conn table {:id id
+                               :job_id job-id
+                               :start start
+                               :interval interval
+                               :data (json/generate-string data)})))
+
+  (get-events [this timestamp]
+    (let [last-check (kv/get-val kv-store :last-check-time)
+          query (str "UPDATE " (sql/quoted \" table)
+                     " SET is_expired = true"
+                     " WHERE \"start\" >= ? AND \"start\" <= ?"
+                     " AND is_expired = false"
+                     " RETURNING id, job_id, \"start\", \"interval\", data")
+          events (sql/query conn [query last-check timestamp])
+          _ (when (seq events) (println "Found events " events))]
+      (kv/set-val! kv-store :last-check-time timestamp)
+      (mapv (fn [row]
+              (-> row
+                  (update-in [:data] #(json/parse-string % true))
+                  (rename-keys {:job_id :job-id})
+                  map->Event))
+            events))))
+
 (defmulti new-event-store :type)
 
 (defmethod new-event-store :local
@@ -92,8 +131,14 @@
                             :kv-store kv-store}))
 
 (defmethod new-event-store :mongodb
-  [{:keys [mongo-opts db collection kv-store]}]
+  [{:keys [mongo-opts db domain kv-store]}]
   (map->MongoDBEventStore {:mongo-opts mongo-opts
                            :db-name db
-                           :collection collection
+                           :collection domain
                            :kv-store kv-store}))
+
+(defmethod new-event-store :sql
+  [{:keys [db-spec domain kv-store]}]
+  (map->SQLEventStore {:db-spec db-spec
+                       :table domain
+                       :kv-store kv-store}))

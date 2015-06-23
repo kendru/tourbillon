@@ -29,7 +29,7 @@ Please see the API description page for details of the message specification.
 
 1. Support a distributed set-up. Ideally, we should be able to run multiple instances in the same JVM, across JVM intances on a single machine, or across JVM instances on multiple machines.
 2. ~~Add authentication and associate jobs with individual accounts~~
-3. Support pluggable persistence layers, and include a adapters for ~~in-memory~~, SQL, DynamoDb, Redis, and ~~Mongo~~ out of the box (note that in-memory and Mongo are now supported)
+3. Support pluggable persistence layers, and include a adapters for ~~in-memory~~, ~~SQL~~, DynamoDb, Redis, and ~~Mongo~~ out of the box - in-memory, SQL, and Mongo are now supported
 4. *Create client library*
 5. ~~Support JWS client authentication~~
 6. Track API requests per-API token

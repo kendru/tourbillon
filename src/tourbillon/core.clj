@@ -17,29 +17,38 @@
             :db (atom {})}
    "mongodb" {:type :mongodb
               :db (get env :mongo-db)
-              :mongo-opts {:host (get env :mongo-host)}}})
+              :mongo-opts {:host (get env :mongo-host)}}
+   "sql" {:type :sql
+          :db-spec {:classname (get env :sql-classname)
+                    :subprotocol (get env :sql-subprotocol)
+                    :subname (str "//"
+                                  (get env :sql-host) ":"
+                                  (get env :sql-port) "/"
+                                  (get env :sql-database))
+                    :user (get env :sql-user)
+                    :password (get env :sql-password)}}})
 
 (defn system [config-options]
   (let [{:keys [app-env]} config-options
-        {:keys [kv-store-type object-store-type web-ip web-port]} env]
+        {:keys [kv-store-type object-store-type event-store-type web-ip web-port]} env]
     (component/system-map
       :config-options config-options
-      :kv-store (new-kv-store (merge (get store-opts kv-store-type) {:collection "kv"}))
+      :kv-store (new-kv-store (merge (get store-opts kv-store-type) {:domain "kv"}))
       :job-store (new-object-store (merge (get store-opts object-store-type)
-                                          {:collection "jobs"
+                                          {:domain "jobs"
                                            :serialize-fn (partial into {})
                                            :unserialize-fn map->Job}))
       :workflow-store (new-object-store (merge (get store-opts object-store-type)
-                                               {:collection "workflows"
+                                               {:domain "workflows"
                                                 :serialize-fn (partial into {})
                                                 :unserialize-fn map->Job}))
       :account-store (new-object-store (merge (get store-opts object-store-type)
-                                              {:collection "accounts"}))
+                                              {:domain "accounts"}))
       :template-store (new-object-store (merge (get store-opts object-store-type)
-                                               {:collection "templates"}))
+                                               {:domain "templates"}))
       :event-store (component/using
-                     (new-event-store (merge (get store-opts object-store-type)
-                                             {:collection "events"}))
+                     (new-event-store (merge (get store-opts event-store-type)
+                                             {:domain "events"}))
                      [:kv-store])
       :subscriber-system (component/using
                            (new-subscriber-system)

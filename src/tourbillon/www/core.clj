@@ -62,7 +62,7 @@
 
     (route/resources "/assets")
 
-    (context "/api" {{:keys [api-key]} :identity}
+    (context "/api" {{:keys [api-key] :as ident} :identity}
       (POST "/api-keys" []
             (response (accounts/create-api-key! account-store)))
       (POST "/session-tokens" {{:keys [api-key api-secret]} :body}
@@ -75,8 +75,8 @@
       (context "/events" []
         (POST "/" {{:keys [at every subscriber data]
                     :or {data {}}} :body}
-              (let [self-transition (create-transition "start" "start" "trigger" [subscriber]
-                    at (when at (max at (+ 1 (utils/get-time)))))
+              (let [self-transition (create-transition "start" "start" "trigger" [subscriber])
+                    at (when at (max at (+ 1 (utils/get-time))))
                     job (create! job-store (create-job nil api-key [self-transition] "start"))
                     event (create-event "trigger" (:id job) at every data)]
                 (send-event! scheduler event)
