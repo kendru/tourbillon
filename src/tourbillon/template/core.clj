@@ -1,6 +1,5 @@
 (ns tourbillon.template.core
-  (:require [clojure.core.memoize :as memo]
-            [tourbillon.storage.object :as store]
+  (:require [tourbillon.storage.object :as store]
             [stencil.core :as stencil]
             [stencil.parser :as parser]
             [slingshot.slingshot :refer [try+]]))
