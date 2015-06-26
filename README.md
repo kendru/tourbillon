@@ -1,5 +1,7 @@
 # Tourbillon: scheduling as a service
 
+[![Build Status](https://semaphoreci.com/api/v1/projects/475af2a8-c777-4f94-9e50-1d213d5ff1a9/467822/badge.svg)](https://semaphoreci.com/kendru/tourbillon--2)
+
 Tourbillon is a web service for managing scheduled tasks and event-based workflows. Uses include triggered emails, multi-party transactions, and recurring reminders. I suppose you could even use it as a parser engine!
 
 The goals of this project are twofold:
