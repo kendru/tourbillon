@@ -12,7 +12,6 @@
   "Start application with a given number of worker processes and optionally
   a webserver for a sample client application."
   [& args]
-  (let [env (or (first args) "dev")]
-    (log/info (str "Starting system in " env))
-    (component/start
-     (system {:app-env (get env :app-env)}))))
+  (log/info (str "Starting system in " (get env :app-env)))
+  (component/start
+    (system {:app-env (get env :app-env)})))
