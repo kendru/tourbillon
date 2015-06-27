@@ -19,7 +19,7 @@
      {:api-key api-key :api-secret secret})))
 
 (defn create-session-token [account-store api-key secret]
-  (let [err-msg "API key or secret invalid" 
+  (let [err-msg "API key or secret invalid"
         details (store/find-by-id account-store api-key)]
     (if details
       (if (hashers/check secret (:secret-digest details))
@@ -28,5 +28,5 @@
           {:token (auth/sign-claim claim)
            :expires (time-coerce/to-long (:exp claim))})
         (throw-unauthorized err-msg))
-      (do (log/warn ("Could not find API key: " api-key))
+      (do (log/warn (str "Could not find API key: " api-key))
           (throw-unauthorized err-msg)))))

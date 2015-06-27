@@ -75,6 +75,7 @@
       (context "/events" []
         (POST "/" {{:keys [at every subscriber data]
                     :or {data {}}} :body}
+              (println "API KEY" api-key)
               (let [self-transition (create-transition "start" "start" "trigger" [subscriber])
                     at (when at (max at (+ 1 (utils/get-time))))
                     job (create! job-store (create-job nil api-key [self-transition] "start"))
@@ -89,7 +90,7 @@
           (let [job (create-job nil api-key transitions current-state)]
             (response
               (create! job-store job))))
-        
+
         ;; TODO: Refactor the checks for job existence and api key match into middleware
         (context "/:id" [id]
           (GET "/" []
@@ -107,7 +108,7 @@
                 (response (get-current-state job))
                 (throw-unauthorized "Job does not match api key"))
               (not-found {:status "error" :msg "No such job"})))
-        
+
           (POST "/" {{:keys [event data]} :body}
             (if-let [job (find-by-id job-store id)]
               (if (= (:api-key job) api-key)

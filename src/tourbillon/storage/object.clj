@@ -34,7 +34,7 @@
       unserialize-fn))
 
   (create! [this obj]
-    (let [id (swap! autoincrement inc)
+    (let [id (or (:id obj) (swap! autoincrement inc))
           obj (assoc obj :id id)]
       (swap! db assoc id (serialize-fn obj))
       obj))
@@ -79,7 +79,7 @@
   (start [component]
     (log/info "Starting SQL object store (" table ")")
     (assoc component :conn (mk-connection-pool db-spec)))
-  
+
   (stop [component]
     (log/info "Stopping SQL object store (" table ")")
     (assoc component :conn nil))

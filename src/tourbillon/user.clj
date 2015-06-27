@@ -24,4 +24,4 @@
 
 (defn reset []
   (stop)
-  (refresh :after 'user/go))
+  (refresh :after 'tourbillon.user/go))

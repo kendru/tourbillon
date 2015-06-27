@@ -9,7 +9,6 @@
             [cheshire.core :as json]
             [tourbillon.utils :as utils]
             [tourbillon.event.core :refer [map->Event]]
-            [tourbillon.storage.key-value :as kv]
             [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
 
 (defn exc-inc-range
@@ -18,22 +17,14 @@
   [start end]
   (reverse (range end start -1)))
 
-(defn init-last-check-time!
-  "Initialize the :last-check-time key in the key/value store only if it is not
-  already set"
-  [kv-store]
-  (when-not (kv/get-val kv-store :last-check-time)
-    (kv/set-val! kv-store :last-check-time (utils/get-time))))
-
 (defprotocol EventStore
   (store-event! [this event])
   (get-events [this timestamp]))
 
-(defrecord InMemoryEventStore [db kv-store]
+(defrecord InMemoryEventStore [db last-check-time]
   component/Lifecycle
   (start [component]
     (log/info "Starting local event store")
-    (init-last-check-time! kv-store)
     component)
 
   (stop [component]
@@ -47,19 +38,18 @@
       (swap! db update-in [timestamp] conj event)))
 
   (get-events [this timestamp]
-    (let [{:keys [db kv-store]} this
-          all-timestamps (exc-inc-range (kv/get-val kv-store :last-check-time) timestamp)
+    (let [{:keys [db]} this
+          all-timestamps (exc-inc-range @last-check-time timestamp)
           events (mapcat #(get @db % (list)) all-timestamps)]
       (println "Getting events in " all-timestamps)
       (swap! db #(apply dissoc % all-timestamps))
-      (kv/set-val! kv-store :last-check-time timestamp)
+      (reset! last-check-time timestamp)
       events)))
 
-(defrecord MongoDBEventStore [mongo-opts db-name collection kv-store conn db]
+(defrecord MongoDBEventStore [mongo-opts db-name collection conn db]
   component/Lifecycle
   (start [component]
     (log/info "Starting MongoDB event store")
-    (init-last-check-time! kv-store)
     (let [conn (mg/connect mongo-opts)]
       (assoc component :conn conn
                        :db (mg/get-db conn db-name))))
@@ -68,7 +58,7 @@
     (log/info "Stopping MongoDB event store")
     (mg/disconnect (:conn component))
     (assoc component :db nil :conn nil))
-  
+
   EventStore
   (store-event! [this event]
     (let [timestamp (:start event)
@@ -78,16 +68,16 @@
                                {:upsert true})))
 
   (get-events [this timestamp]
-    (let [{:keys [db kv-store collection]} this
-          all-timestamps (exc-inc-range (kv/get-val kv-store :last-check-time) timestamp)
-          events (into []
-                   (mapcat (fn [timestamp]
-                             (when-let [record (mc/find-and-modify db collection {:_id timestamp} {} {:remove true})]
-                               (map map->Event (:events record)))) all-timestamps))]
-      (kv/set-val! kv-store :last-check-time timestamp)
-      events)))
+    (let [{:keys [db collection]} this
+          records (mc/find-and-modify db collection
+                                      {:_id {$lte timestamp}}
+                                      {}
+                                      {:remove true})]
+      (->> records
+           (mapcat :events)
+           (map map->Event)))))
 
-(defrecord SQLEventStore [db-spec table kv-store conn]
+(defrecord SQLEventStore [db-spec table conn]
   component/Lifecycle
   (start [component]
     (log/info "Starting SQL event store (" table ")")
@@ -107,15 +97,14 @@
                                :data (json/generate-string data)})))
 
   (get-events [this timestamp]
-    (let [last-check (kv/get-val kv-store :last-check-time)
-          query (str "UPDATE " (sql/quoted \" table)
+    (let [query (str "UPDATE " (sql/quoted \" table)
                      " SET is_expired = true"
-                     " WHERE \"start\" >= ? AND \"start\" <= ?"
+                     " WHERE \"start\" <= ?"
                      " AND is_expired = false"
                      " RETURNING id, job_id, \"start\", \"interval\", data")
-          events (sql/query conn [query last-check timestamp])
-          _ (when (seq events) (println "Found events " events))]
-      (kv/set-val! kv-store :last-check-time timestamp)
+          events (sql/query conn [query timestamp])]
+      (when (seq events)
+        (log/debug "Found events" timestamp events))
       (mapv (fn [row]
               (-> row
                   (update-in [:data] #(json/parse-string % true))
@@ -126,19 +115,17 @@
 (defmulti new-event-store :type)
 
 (defmethod new-event-store :local
-  [{:keys [db kv-store]}]
+  [{:keys [db last-check-time]}]
   (map->InMemoryEventStore {:db db
-                            :kv-store kv-store}))
+                            :last-check-time (atom (or last-check-time (utils/get-time)))}))
 
 (defmethod new-event-store :mongodb
-  [{:keys [mongo-opts db domain kv-store]}]
+  [{:keys [mongo-opts db domain]}]
   (map->MongoDBEventStore {:mongo-opts mongo-opts
                            :db-name db
-                           :collection domain
-                           :kv-store kv-store}))
+                           :collection domain}))
 
 (defmethod new-event-store :sql
-  [{:keys [db-spec domain kv-store]}]
+  [{:keys [db-spec domain]}]
   (map->SQLEventStore {:db-spec db-spec
-                       :table domain
-                       :kv-store kv-store}))
+                       :table domain}))
