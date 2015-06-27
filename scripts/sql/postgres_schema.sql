@@ -19,11 +19,6 @@ CREATE TABLE IF NOT EXISTS templates (
     data TEXT
 );
 
-CREATE TABLE IF NOT EXISTS kv (
-    key VARCHAR PRIMARY KEY,
-    value TEXT
-);
-
 CREATE TABLE IF NOT EXISTS events (
     id VARCHAR,
     job_id VARCHAR,
