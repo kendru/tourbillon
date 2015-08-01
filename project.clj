@@ -28,18 +28,22 @@
                  [environ "1.0.0"]
                  [overtone/at-at "1.2.0"]]
 
-  :plugins [[lein-environ "1.0.0"]]
+  :plugins [[lein-environ "1.0.0"]
+            [speclj "3.2.0"]]
 
   :main tourbillon.main
 
   :aliases {"build" ["do" ["clean"] ["compile"] ["uberjar"]]}
+
+  :test-paths ["spec"]
 
   :profiles {:production {:ring {:open-browser? false
                                  :stacktraces? false,
                                  :auto-reload? false}}
              :uberjar {:aot :all}
              :dev {:dependencies [[ring-mock "0.1.5"]
-                                  [ring/ring-devel "1.2.2"]]}}
+                                  [ring/ring-devel "1.2.2"]
+                                  [speclj "3.2.0"]]}}
 
 ;; In production, some of these will be overridden by environment variables
 :env {
