@@ -70,6 +70,8 @@
 
 ;; TODO: the responsibility of updating the job in the jobstore does not
 ;; seem natural here. See if there is a better place to refactor it.
+;; Also, the notification of subscribers should probably be placed on a message queue
+;; rather than simply passed off to a future.
 (defn emit! [jobstore subscriber-system event]
   (when-let [job (find-by-id jobstore (:job-id event))]
     (if-let [transition (get-valid-transition job event)]

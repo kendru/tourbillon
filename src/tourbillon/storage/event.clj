@@ -17,10 +17,16 @@
   [start end]
   (reverse (range end start -1)))
 
+(defn mapcat-eager [f xs]
+  (->> xs (map f) (reduce concat)))
+
 (defprotocol EventStore
   (store-event! [this event])
   (get-events [this timestamp]))
 
+;; Note that retrieval is NOT an efficient operation - it is linear with the time
+;; passed since the last check. This event store is meant for dev/testing purposes
+;; only and should not be used in production. 
 (defrecord InMemoryEventStore [db last-check-time]
   component/Lifecycle
   (start [component]
@@ -35,12 +41,13 @@
   (store-event! [this event]
     (let [timestamp (:start event)
           db (:db this)]
+      (log/info "STORING EVENT" event)
       (swap! db update-in [timestamp] conj event)))
 
   (get-events [this timestamp]
     (let [{:keys [db]} this
           all-timestamps (exc-inc-range @last-check-time timestamp)
-          events (mapcat #(get @db % (list)) all-timestamps)]
+          events (mapcat-eager #(get @db % '()) all-timestamps)]
       (log/debug (str "Getting events in " all-timestamps))
       (swap! db #(apply dissoc % all-timestamps))
       (reset! last-check-time timestamp)

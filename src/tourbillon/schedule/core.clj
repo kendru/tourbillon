@@ -19,7 +19,7 @@
     (emit! job-store subscriber-system event)))
 
 (defmethod send-event! :delayed [scheduler event]
-  (let [{:keys [event-store subscriber-system]} scheduler]
+  (let [{:keys [event-store]} scheduler]
     (log/info ["processing event later" event])
     (event/store-event! event-store event)))
 

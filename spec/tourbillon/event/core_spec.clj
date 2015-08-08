@@ -6,6 +6,7 @@
   (let [e-immediate (create-event "event-id" :job-id {})
         e-scheduled (create-event "event-id" :job-id 5 {})
         e-recurring (create-event "event-id" :job-id 5 10 {})]
+    
     (it "can be immediate"
       (should (is-immediate? e-immediate))
       (should-not (is-immediate? e-scheduled))
@@ -19,4 +20,10 @@
     (it "can be recurring"
       (should (is-recurring? e-recurring))
       (should-not (is-recurring? e-immediate))
-      (should-not (is-recurring? e-scheduled)))))
+      (should-not (is-recurring? e-scheduled)))
+
+    (describe "recurring events"
+      (it "can get the next recurring interval"
+        (let [next-event (next-interval e-recurring)]
+          (should= 15 (:start next-event))
+          (should= 10 (:interval next-event)))))))

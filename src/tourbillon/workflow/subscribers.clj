@@ -77,7 +77,6 @@
               (let [template-id (get acc k)
                     old-key-name (name k)
                     new-key (keyword (subs old-key-name 0 (- (count old-key-name) 9)))]
-                (println "replacing" old-key-name "with" new-key "and template" template-id)
                 (-> acc
                     (assoc new-key (render-template template-store template-id data))
                     (dissoc k)))) 
@@ -102,8 +101,7 @@
   SubscriberSystem
   (notify-all! [this subscribers data]
     (log/info "Notifying subscribers!")
-    (when-let [missing-type (some (partial get-type-of-missing-handler this) subscribers)]
-      (println "Missing subscriber :(" missing-type)
+    (when-let [missing-type (some (partial get-type-of-missing-handler this) subscribers)](log/warn "Missing subscriber :(" missing-type)
       (throw+ {:type ::no-handler :subscriber-type missing-type :message "No handler defined for subscriber type"}))
     (doseq [{:keys [type] :as subscriber} subscribers
             :let [handler (get-in this [:handlers (keyword type)])]]
