@@ -375,8 +375,8 @@
                                           (and (= dow 5)
                                                (or (= day (dec day-near))
                                                    (let [last-of-month (get-days-in-month month year)]
-                                                     (and (= day (- last-day-of-month 2))
-                                                          (= day-near last-day-of-month))))))))
+                                                     (and (= day (- last-of-month 2))
+                                                          (= day-near last-of-month))))))))
     ;; Should never be reached
     :else                         (constantly true)))
 
