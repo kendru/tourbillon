@@ -26,6 +26,7 @@
                  [org.postgresql/postgresql "9.4-1201-jdbc41"]
                  [com.mchange/c3p0 "0.9.2.1"]
                  [environ "1.0.0"]
+                 [clj-time "0.10.0"]
                  [overtone/at-at "1.2.0"]]
 
   :plugins [[lein-environ "1.0.0"]
