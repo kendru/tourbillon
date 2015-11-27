@@ -48,7 +48,7 @@
     (let [{:keys [db]} this
           all-timestamps (exc-inc-range @last-check-time timestamp)
           events (mapcat-eager #(get @db % '()) all-timestamps)]
-      (log/debug (str "Getting events in " all-timestamps))
+      #_(log/debug (str "Getting events in " all-timestamps))
       (swap! db #(apply dissoc % all-timestamps))
       (reset! last-check-time timestamp)
       events)))

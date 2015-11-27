@@ -12,8 +12,11 @@
             [buddy.auth :refer [throw-unauthorized]]
             [buddy.auth.middleware :refer [wrap-authentication wrap-authorization]]
             [buddy.auth.accessrules :refer [wrap-access-rules]]
+            [clj-time.core :as t]
+            [clj-time.coerce :as time-coerce]
             [tourbillon.workflow.jobs :refer [create-job create-transition get-current-state add-transition remove-transition update-subscribers emit!]]
             [tourbillon.event.core :refer [create-event]]
+            [tourbillon.event.cron :refer [parse-cron get-next-time]]
             [tourbillon.schedule.core :refer [send-event!]]
             [tourbillon.storage.object :refer :all]
             [tourbillon.auth.accounts :as accounts]
@@ -54,6 +57,15 @@
 (defn- json-request? [req]
   (= "application/json" (get-in req [:headers "content-type"])))
 
+(defn- get-at
+  "Get the initial time at which to fire an event, given
+  an initial time and cron spec that may be nil"
+  [at cron]
+  (if cron
+    (/ (time-coerce/to-long (get-next-time (t/now) cron)) 1000)
+    (if at
+      (max at (+ 1 (utils/get-time))))))
+
 (defn app-routes [job-store account-store template-store scheduler]
   (routes
     (GET "/" [] (content-type
@@ -73,13 +85,14 @@
       ;     ()))
 
       (context "/events" []
-        (POST "/" {{:keys [at every subscriber data]
+        (POST "/" {{:keys [at every cron subscriber data]
                     :or {data {}}} :body}
-              (println "API KEY" api-key)
               (let [self-transition (create-transition "start" "start" "trigger" [subscriber])
-                    at (when at (max at (+ 1 (utils/get-time))))
+                    at (get-at at (when cron (parse-cron cron)))
                     job (create! job-store (create-job nil api-key [self-transition] "start"))
-                    event (create-event "trigger" (:id job) at every data)]
+                    event (if cron
+                            (create-event "trigger" (:id job) at cron data)
+                            (create-event "trigger" (:id job) at every data))]
                 (send-event! scheduler event)
                 (response event))))
       (context "/jobs" []

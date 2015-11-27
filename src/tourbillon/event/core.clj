@@ -1,5 +1,7 @@
 (ns tourbillon.event.core
-  (:require [taoensso.timbre :as log]))
+  (:require [taoensso.timbre :as log]
+            [tourbillon.event.cron :as cron]
+            [clj-time.coerce :as time-coerce]))
 
 (def not-nil? (complement nil?))
 
@@ -11,7 +13,7 @@
   (next-interval [this]))
 
 (defprotocol Interval
-  "A recurring time"
+  "A thing that recurs at at intervals"
   (succ [this from-timestamp]))
 
 (extend-protocol Interval
@@ -20,6 +22,13 @@
 
   Long
   (succ [this from-timestamp] (+ from-timestamp this))
+
+  String
+  (succ [this from-timestamp]
+    (/ (time-coerce/to-long
+        (cron/get-next-time (time-coerce/from-long (* (inc from-timestamp) 1000))
+                            (cron/parse-cron this)))
+       1000))
   
   nil
   (nxt [_ _] nil))
