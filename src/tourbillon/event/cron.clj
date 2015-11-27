@@ -9,49 +9,76 @@
 (defprotocol ICanMatch
   (matches? [this n]))
 
+(defprotocol ITypedMatcher
+  (match-type [this]))
+
 (defrecord CValue [x]
   IAsStr
   (as-str [_] (str x))
   
   ICanMatch
-  (matches? [this n] (= x n)))
+  (matches? [_ n] (= x n))
+
+  ITypedMatcher
+  (match-type [_] ::value))
 
 (defrecord CRange [fst lst]
   IAsStr
   (as-str [_] (str fst "-" lst))
 
   ICanMatch
-  (matches? [_ n] (<= fst n lst)))
+  (matches? [_ n] (<= fst n lst))
+
+  ITypedMatcher
+  (match-type [_] ::range))
 
 (defrecord CWildcard []
   IAsStr
   (as-str [_] "*")
 
   ICanMatch
-  (matches? [_ _] true))
+  (matches? [_ _] true)
+
+  ITypedMatcher
+  (match-type [_] ::wildcard))
 
 (defrecord CColl [xs]
   IAsStr
   (as-str [_] (clojure.string/join "," xs))
 
   ICanMatch
-  (matches? [_ n] (some #(= n) xs)))
+  (matches? [_ n] (some #(= n) xs))
+
+  ITypedMatcher
+  (match-type [_] ::collection))
 
 (defrecord CLastWeekdayOfMonth [dow]
   IAsStr
-  (as-str [_] (str dow "L")))
+  (as-str [_] (str dow "L"))
+
+  ITypedMatcher
+  (match-type [_] ::last-weekday-of-month))
 
 (defrecord CLastOfMonth []
   IAsStr
-  (as-str [_] "L"))
+  (as-str [_] "L")
+
+  ITypedMatcher
+  (match-type [_] ::last-of-month))
 
 (defrecord CNearWeekday [day]
   IAsStr
-  (as-str [_] (str day "W")))
+  (as-str [_] (str day "W"))
+
+  ITypedMatcher
+  (match-type [_] ::near-weekday))
 
 (defrecord CWeekOfMonth [dow wom]
   IAsStr
-  (as-str [_] (str dow "#" wom)))
+  (as-str [_] (str dow "#" wom))
+
+  ITypedMatcher
+  (match-type [_] ::week-of-month))
 
 (defrecord CStep [x step]
   IAsStr
@@ -60,10 +87,13 @@
   ICanMatch
   (matches? [_ n]
     (cond
-      (instance? CWildcard x) (= 0 (mod n step))
-      (instance? CRange x)    (and (>= n (:fst x))
-                                   (= 0 (mod (- n (:fst x)) step)))
-      :else                   false)))
+     (= ::wildcard (match-type x)) (= 0 (mod n step))
+     (= ::range (match-type x))    (and (>= n (:fst x))
+                                  (= 0 (mod (- n (:fst x)) step)))
+     :else                   false))
+
+  ITypedMatcher
+  (match-type [_] ::step))
 
 (defrecord Cron [sec minute hour dom month dow]
   IAsStr
@@ -305,109 +335,111 @@
     29
     (get [31 28 31 30 31 30 31 31 30 31 30 31] (dec month))))
 
-(defn month-seq*
-  "Generate an infinite sequence of [month, year] starting at the given month and year"
-  [^Integer month ^Integer year]
-  (cons
-    [month year]
-    (lazy-seq
-      (if (= month 12)
-        (month-seq* 1 (inc year))
-        (month-seq* (inc month) year)))))
-
-(defn day-seq*
-  "Generate an infinite sequence of [day month year] starting at the given day, month, and year"
-  [^Integer day ^Integer month ^Integer year]
-  (cons
-      [day month year]
-      (lazy-seq
-        (apply day-seq*
-          (let [last-dom (get-days-in-month month year)]
-            (if (= last-dom day)
-              (if (= 12 month)
-                (day-seq* 1 1 (inc year))
-                (day-seq* 1 (inc month) year))
-              (day-seq* (inc day) month year)))))))
-
-(defn month-seq
-  "Generate a lazy seq of [month, year] that match the month field given"
-  [^DateTime now m-spec]
-  (filter #(matches? m-spec (first %))
-          (month-seq* (t/month now) (t/year now))))
-
 (defn- get-dow-matcher [spec]
   (cond
     (satisfies? ICanMatch spec)          #(matches? spec (first %))
-    (instance? CLastWeekdayOfMonth spec) (fn [[day month year]]
-                                           (and (= (:dow spec)
-                                                   (day-of-week year month day))
-                                                (> (+ day 7) (get-days-in-month month year))))
-    (instance? CWeekOfMonth spec)        (fn [day month year]
-                                           (let [dow (:dow spec)
-                                                 wom (:wom spec)
-                                                 starts-on-dow (day-of-week year month 1)
-                                                 first-dow-day (inc (if (>= dow starts-on-dow)
-                                                                      (- dow starts-on-dow)
-                                                                      (- (+ dow 7) starts-on-dow)))]
-                                             (= day (+ first-dow-day (* (inc wom) 7)))))
+    (= ::last-weekday-of-month (match-type spec))
+    (fn [[day month year]]
+      (and (= (:dow spec)
+              (day-of-week year month day))
+           (> (+ day 7) (get-days-in-month month year))))
+    (= ::week-of-month (match-type spec))
+    (fn [day month year]
+      (let [dow (:dow spec)
+            wom (:wom spec)
+            starts-on-dow (day-of-week year month 1)
+            first-dow-day (inc (if (>= dow starts-on-dow)
+                                 (- dow starts-on-dow)
+                                 (- (+ dow 7) starts-on-dow)))]
+        (= day (+ first-dow-day (* (inc wom) 7)))))
     ;; Should never be reached
     :else                                (constantly true)))
 
 (defn- get-dom-matcher [spec]
   (cond
     (satisfies? ICanMatch spec)   #(matches? spec (first %))
-    (instance? CLastOfMonth spec) (fn [[day month year]]
-                                    (= day (get-days-in-month month year)))
+    (= ::last-of-month (match-type spec))
+    (fn [[day month year]]
+      (= day (get-days-in-month month year)))
     ;; Matches the nearest weekday to :day specified in spec.
     ;; If the current "day" passed in is a weekday and matches the day in the spec,
     ;; it passes. Otherwise, It matches the nearest weekday within the month. E.g. if
     ;; the specification was 1W, and the first of the month was a Saturday, it would match
     ;; the 3rd of the month, not the last day of the previous month.   
-    (instance? CNearWeekday spec) (fn [[day month year]]
-                                    (let [day-near (:day spec)
-                                          dow (day-of-week year month day)]
-                                      (or (and (= day day-near)
-                                               (< 0 dow < 6))
-                                          (and (= dow 1)
-                                               (or (= day (inc day-near))
-                                                   (and (= day 3)
-                                                        (= day-near 1))))
-                                          (and (= dow 5)
-                                               (or (= day (dec day-near))
-                                                   (let [last-of-month (get-days-in-month month year)]
-                                                     (and (= day (- last-of-month 2))
-                                                          (= day-near last-of-month))))))))
+    (= ::near-weekday (match-type spec))
+    (fn [[day month year]]
+      (let [day-near (:day spec)
+            dow (day-of-week year month day)]
+        (or (and (= day day-near)
+                 (< 0 dow < 6))
+            (and (= dow 1)
+                 (or (= day (inc day-near))
+                     (and (= day 3)
+                          (= day-near 1))))
+            (and (= dow 5)
+                 (or (= day (dec day-near))
+                     (let [last-of-month (get-days-in-month month year)]
+                       (and (= day (- last-of-month 2))
+                            (= day-near last-of-month))))))))
     ;; Should never be reached
     :else                         (constantly true)))
 
-(defn day-seq
-  "Generate a lazy seq of [day month year] that match the day of week or week of month
-  field specified. If both fields are wildcards, any day matches. If one field is a wildcard,
-  the other field is tried. If neither field is a wildcard, days matching either are matched."
-  [now month year dom-spec dow-spec]
-  (let [matches-dow? (get-dow-matcher dow-spec)
-        matches-dom? (get-dom-matcher dom-spec)
-        pred (cond
-               (and (instance? CWildcard dom-spec)
-                    (instance? CWildcard dow-spec)) (constantly true)
-               (instance? CWildcard dom-spec)       matches-dow?
-               (instance? CWildcard dow-spec)       matches-dom?
-               :else                                (fn [date] (or (matches-dow? date) (matches-dom? date))))]
-    (filter pred (day-seq* [(t/day now) month year]))))
+(defn- get-day-matcher
+  [cron]
+  (let [matches-dow? (get-dow-matcher (:dow cron))
+        matches-dom? (get-dom-matcher (:dom cron))]
+    (cond
+     (every? #(= ::wildcard (match-type %)) [(:dom cron) (:dow cron)]) (constantly true)
+     (= ::wildcard (match-type (:dom cron))) matches-dow?
+     (= ::wildcard (match-type (:dow cron))) matches-dom?
+     :else (fn [date] (or (matches-dow? date) (matches-dom? date))))))
 
-(defn get-matching-instant
-  [now sec-spec min-spec hour-spec [day month year]]
-  (let [d-now (t/day now)
-        m-now (t/month now)
-        y-now (t/year now)]
-    ))
-
-(defn get-next-time
-  "Given a cron specification, find the next time (equal to or after the now parameter)
-  that matches the entire cron specification"
-  [^DateTime now cron]
-  (some (partial get-matching-instant now (:sec cron) (:minute cron) (:hour cron))
-        (for [[month year] (month-seq now (:month cron))
-              [day month year] (day-seq now month year (:dom cron) (:dow cron))]
-          [day month year])))
+(defn get-next-time [^DateTime now cron]
+  (loop [second (t/second now)
+         minute (t/minute now)         
+         hour (t/hour now)
+         day (t/day now)
+         month (t/month now)
+         year (t/year now)]
+    (if (matches? (:month cron) month)
+      (if ((get-day-matcher cron) [day month year])
+        (if (matches? (:hour cron) hour)
+          (if (matches? (:minute cron) minute)
+            (if (matches? (:sec cron) second)
+              (t/date-time year month day hour minute second) ; Base case
+              (if (= 59 second)
+                (if (= 59 minute)
+                  (if (= 23 hour)
+                    (if (= (get-days-in-month month year) day)
+                      (if (= 12 month)
+                        (recur 0 0 0 1 1 (inc year))
+                        (recur 0 0 0 1 (inc month) year))
+                      (recur 0 0 0 (inc day) month year))
+                    (recur 0 0 (inc hour) day month year))
+                  (recur 0 (inc minute) hour day month year))
+                (recur (inc second) minute hour day month year)))
+            (if (= 59 minute)
+              (if (= 23 hour)
+                (if (= (get-days-in-month month year) day)
+                  (if (= 12 month)
+                    (recur 0 0 0 1 1 (inc year))
+                    (recur 0 0 0 1 (inc month) year))
+                  (recur 0 0 0 (inc day) month year))
+                (recur 0 0 (inc hour) day month year))
+              (recur 0 (inc minute) hour day month year)))
+          (if (= 23 hour)
+            (if (= (get-days-in-month month year) day)
+              (if (= 12 month)
+                (recur 0 0 0 1 1 (inc year))
+                (recur 0 0 0 1 (inc month) year))
+              (recur 0 0 0 (inc day) month year))
+            (recur 0 0 (inc hour) day month year)))
+        (if (= (get-days-in-month month year) day)
+          (if (= 12 month)
+            (recur 0 0 0 1 1 (inc year))
+            (recur 0 0 0 1 (inc month) year))
+          (recur 0 0 0 (inc day) month year)))
+      (if (= 12 month)
+        (recur 0 0 0 1 1 (inc year))
+        (recur 0 0 0 1 (inc month) year)))))
 

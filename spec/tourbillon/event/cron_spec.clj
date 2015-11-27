@@ -1,6 +1,8 @@
 (ns tourbillon.event.cron-spec
   (:require [speclj.core :refer :all]
-            [tourbillon.event.cron :refer :all]))
+            [tourbillon.event.cron :refer :all]
+            [clj-time.core :as t])
+  (:import [org.joda.time DateTime]))
 
 (describe "Cron-style parsing and handling"
   (it "Defines a Cron record"
@@ -60,7 +62,7 @@
     (it "parses a simple entry without seconds"
       (let [cron (parse-cron "* * * * *")]
         (should-be (partial every? #(= (->CWildcard) %))
-          ((juxt :minute :hour :dom :month :dow) cron))
+                   ((juxt :minute :hour :dom :month :dow) cron))
         (should= (->CValue 0) (:sec cron))))
 
     (it "parses a cron with more complex values"
@@ -315,4 +317,20 @@
                            "* * * * * 7"])))))
 
   (describe "finding execution times"
-    (it "")))
+    (with now (t/date-time 2015 1 2 12 0 0)) ; Jan 2, 2015, 12:00 PM
+
+    (it "should find when the execution time matches now"
+        (should= @now
+                 (get-next-time @now (parse-cron "* * * * * *"))))
+
+    (it "should find an execution time at the first instant of next month"
+        (should= (t/date-time 2015 2 1 0 0 0)
+                 (get-next-time @now (parse-cron "* * * 1 * *"))))
+
+    (it "should find an execution time at the first instant of next year"
+        (should= (t/date-time 2016 1 1 0 0 0)
+                 (get-next-time @now (parse-cron "* * * 1 1 *"))))
+
+    (it "should find a time that matches in the same day"
+        (should= (t/date-time 2015 1 2 12 30 0)
+                 (get-next-time @now (parse-cron "* 30-59/15 * * * *"))))))
