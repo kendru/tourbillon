@@ -4,7 +4,7 @@
             [tourbillon.storage.event :refer [new-event-store]]
             [tourbillon.schedule.core :refer [new-scheduler]]
             [tourbillon.workflow.subscribers :refer [new-subscriber-system]]
-            [tourbillon.workflow.jobs :refer [map->Job map->Workflow]]
+            [tourbillon.domain :refer [Job Workflow]]
             [environ.core :refer [env]]
             [overtone.at-at :refer [mk-pool]]
             [com.stuartsierra.component :as component]))
@@ -39,12 +39,10 @@
       :config-options config-options
       :job-store (new-object-store (get-store-opts object-store-type
                                                    {:domain "jobs"
-                                                    :serialize-fn (partial into {})
-                                                    :unserialize-fn map->Job}))
+                                                    :schema Job}))
       :workflow-store (new-object-store (get-store-opts object-store-type
                                                         {:domain "workflows"
-                                                         :serialize-fn (partial into {})
-                                                         :unserialize-fn map->Job}))
+                                                         :schema Workflow}))
       :account-store (new-object-store (get-store-opts object-store-type
                                                        {:domain "accounts"}))
       :template-store (new-object-store (get-store-opts object-store-type
@@ -60,4 +58,4 @@
       :webserver (component/using
                    (new-server {:ip (get env :web-ip)
                                 :port (Integer/parseInt (get env :web-port))}) ;; TODO: replace IP and port
-                   [:job-store :account-store :template-store :scheduler]))))
+                   [:job-store :workflow-store :account-store :template-store :scheduler]))))

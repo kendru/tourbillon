@@ -14,7 +14,7 @@
             [buddy.auth.accessrules :refer [wrap-access-rules]]
             [clj-time.core :as t]
             [clj-time.coerce :as time-coerce]
-            [tourbillon.workflow.jobs :refer [create-job create-transition get-current-state add-transition remove-transition update-subscribers emit!]]
+            [tourbillon.workflow.jobs :refer [get-job-status add-transition remove-transition update-subscribers emit!]]
             [tourbillon.event.core :refer [create-event]]
             [tourbillon.event.cron :refer [parse-cron get-next-time]]
             [tourbillon.schedule.core :refer [send-event!]]
@@ -66,7 +66,7 @@
     (if at
       (max at (+ 1 (utils/get-time))))))
 
-(defn app-routes [job-store account-store template-store scheduler]
+(defn app-routes [job-store workflow-store account-store template-store scheduler]
   (routes
     (GET "/" [] (content-type
                   (resource-response "index.html" {:root "public"})
@@ -80,29 +80,42 @@
       (POST "/session-tokens" {{:keys [api-key api-secret]} :body}
             (response (accounts/create-session-token account-store api-key api-secret)))
 
-      ; (context "/workflows" []
-      ;   (POST "/" {data :body}
-      ;     ()))
+      (context "/workflows" []
+        (POST "/" {{:keys [transitions start-state]
+                    :or {transitions []}
+                    :as data} :body}
+              (response
+               (create! workflow-store {:api-key api-key
+                                        :start-state start-state
+                                        :transitions transitions})))
+        (GET "/:id" [id]
+             (if-let [workflow (find-by-id workflow-store id)]
+               (if (= (:api-key workflow) api-key)
+                 (response workflow)
+                 (throw-unauthorized "Workflow does not match api key"))
+               (not-found {:status "error" :msg "No such workflow"}))))
 
       (context "/events" []
         (POST "/" {{:keys [at every cron subscriber data]
                     :or {data {}}} :body}
-              (let [self-transition (create-transition "start" "start" "trigger" [subscriber])
+              (let [self-transition {:from "start" :to "start" :on "trigger" :subscribers [subscriber]}
                     at (get-at at (when cron (parse-cron cron)))
-                    job (create! job-store (create-job nil api-key [self-transition] "start"))
-                    event (if cron
-                            (create-event "trigger" (:id job) at cron data)
-                            (create-event "trigger" (:id job) at every data))]
+                    job (create! job-store {:api-key api-key
+                                            :current-state "start"
+                                            :transitions [self-transition]})
+                    event (create-event "trigger" (:id job) at (or cron every) data)]
                 (send-event! scheduler event)
                 (response event))))
+
       (context "/jobs" []
         (POST "/" {{:keys [transitions current-state]
                     :or {transitions []
                          current-state "start"}
                     :as data} :body}
-          (let [job (create-job nil api-key transitions current-state)]
-            (response
-              (create! job-store job))))
+              (response
+               (create! job-store {:api-key api-key
+                                   :current-state current-state
+                                   :transitions transitions})))
 
         ;; TODO: Refactor the checks for job existence and api key match into middleware
         (context "/:id" [id]
@@ -114,11 +127,10 @@
 
               (not-found {:status "error" :msg "No such job"})))
 
-          ;; Returns {:state current-state :transitions [{:to target-state :on event :subscribers [subscriber}]
           (GET "/current-state" []
             (if-let [job (find-by-id job-store id)]
               (if (= (:api-key job) api-key)
-                (response (get-current-state job))
+                (response (get-job-status job))
                 (throw-unauthorized "Job does not match api key"))
               (not-found {:status "error" :msg "No such job"})))
 
@@ -168,13 +180,13 @@
 
     (not-found {:status "error" :msg "Not found"})))
 
-(defrecord Webserver [ip port connection job-store account-store template-store scheduler]
+(defrecord Webserver [ip port connection job-store workflow-store account-store template-store scheduler]
   component/Lifecycle
 
   (start [component]
     (log/info "Starting web server")
 
-    (let [app (-> (app-routes job-store account-store template-store scheduler)
+    (let [app (-> (app-routes job-store workflow-store account-store template-store scheduler)
                   handler/api
                   (wrap-access-rules {:rules access-rules :on-error auth/on-error})
                   (wrap-authorization auth/backend)

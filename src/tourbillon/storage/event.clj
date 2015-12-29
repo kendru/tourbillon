@@ -7,8 +7,9 @@
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
             [cheshire.core :as json]
+            [schema.core :as s]
             [tourbillon.utils :as utils]
-            [tourbillon.event.core :refer [map->Event]]
+            [tourbillon.domain :refer [Event]]
             [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
 
 (defn exc-inc-range
@@ -58,8 +59,9 @@
   (start [component]
     (log/info "Starting MongoDB event store")
     (let [conn (mg/connect mongo-opts)]
-      (assoc component :conn conn
-                       :db (mg/get-db conn db-name))))
+      (assoc component
+        :conn conn
+        :db (mg/get-db conn db-name))))
 
   (stop [component]
     (log/info "Stopping MongoDB event store")
@@ -69,10 +71,10 @@
   EventStore
   (store-event! [this event]
     (let [timestamp (:start event)
-         {:keys [db collection]} this]
+          {:keys [db collection]} this]
       (mc/update db collection {:_id timestamp}
-                               {$push {:events (into {} event)}}
-                               {:upsert true})))
+                 {$push {:events event}}
+                 {:upsert true})))
 
   (get-events [this timestamp]
     (let [{:keys [db collection]} this
@@ -80,9 +82,7 @@
                                       {:_id {$lte timestamp}}
                                       {}
                                       {:remove true})]
-      (->> records
-           (mapcat :events)
-           (map map->Event)))))
+      (mapcat :events records))))
 
 (defrecord SQLEventStore [db-spec table conn]
   component/Lifecycle
@@ -115,8 +115,7 @@
       (mapv (fn [row]
               (-> row
                   (update-in [:data] #(json/parse-string % true))
-                  (rename-keys {:job_id :job-id})
-                  map->Event))
+                  (rename-keys {:job_id :job-id})))
             events))))
 
 (defmulti new-event-store :type)

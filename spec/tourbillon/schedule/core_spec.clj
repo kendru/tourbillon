@@ -5,9 +5,8 @@
             [tourbillon.event.core :refer [create-event next-interval]]
             [tourbillon.storage.object :refer [new-object-store]]
             [tourbillon.storage.event :refer [new-event-store get-events]]
-            [tourbillon.workflow.jobs :refer [map->Job]]
-            [overtone.at-at :refer [mk-pool]]
-            ))
+            [tourbillon.domain :refer [Job Event]]
+            [overtone.at-at :refer [mk-pool]]))
 
 ;; TODO: This ns may need some mocking to test at a unit level, since it acts
 ;; as a coordinating component
@@ -25,8 +24,7 @@
   (around [it]
     (let [job-store (new-object-store {:type :local
                                        :db (atom {})
-                                       :serialize-fn (partial into {})
-                                       :unserialize-fn map->Job})
+                                       :schema Job})
           event-store (new-event-store {:type :local
                                         :db (atom {})
                                         :last-check-time the-time})]

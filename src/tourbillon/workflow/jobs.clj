@@ -1,33 +1,23 @@
 (ns tourbillon.workflow.jobs
   (:require [tourbillon.workflow.subscribers :as subscribers]
             [tourbillon.storage.object :refer [find-by-id update!]]
+            [tourbillon.domain :refer [Transition Job JobStatus Workflow Event]]
             [taoensso.timbre :as log]
-            [clojure.set :refer [rename-keys]]))
+            [clojure.set :refer [rename-keys]]
+            [schema.core :as s]))
 
-;; TODO: Create record type for Transition
-(defn create-transition
-  ([from to on] (create-transition from to on []))
-  ([from to on subscribers] {:from from
-                             :to to
-                             :on on
-                             :subscribers subscribers}))
+(defn- are-same-transition [& ts]
+  (apply = (map (juxt :from :to :on) ts)))
 
-(defrecord Workflow [id api-key transitions start-state])
-(defn create-workflow [id api-key transitions start-state]
-  (Workflow. id api-key transitions start-state))
-
-(defrecord Job [id api-key transitions current-state])
-(defn create-job [id api-key transitions current-state]
-  (Job. id api-key transitions current-state))
-
-(defn Workflow->Job [workflow]
+(s/defn Workflow->Job :- Job
+  [workflow :- Workflow]
   (-> workflow
-    (into {})
-    (dissoc :id)
-    (rename-keys {:start-state :current-state})
-    map->Job))
+      (dissoc :id)
+      (rename-keys {:start-state :current-state})))
 
-(defn get-valid-transition [job event]
+(s/defn get-valid-transition :- (s/maybe Transition)
+  [job :- Job
+   event :- Event]
   (let [transitions (:transitions job)
         current-state (:current-state job)
         event-id (:id event)]
@@ -36,34 +26,36 @@
                     (= (:from %) current-state))
               transitions))))
 
-(defn- are-same-transition [& ts]
-  (apply = (map (juxt :from :to :on) ts)))
+(s/defn get-current-transitions :- [Transition]
+  "Returns a list of all transitions possible from the current state."
+  [job :- Job]
+  (let [current-state (:current-state job)]
+    (filterv #(= current-state (:from %))
+             (:transitions job))))
 
-(defn get-current-transitions
-  "Returns a list of all transitions possible from the current state.
-  Transitions are represented as a map with :to, :on, and :subscriber keys."
-  [job]
-  (let [transitions (:transitions job)
-        current-state (:current-state job)
-        from-current (filter #(= current-state (:from %)) transitions)]
-    (map #(select-keys % [:to :on :subscribers]) from-current)))
+(s/defn get-job-status :- JobStatus
+  [job :- Job]
+  {:state (:current-state job)
+   :transitions (get-current-transitions job)})
 
-(defn get-current-state [job]
-  {:state (:current-state job) :transitions (get-current-transitions job)})
-
-(defn update-subscribers
+(s/defn update-subscribers :- Job
   "Updates the job by replacing the transition with the same from, to, and on as the
   supplied transition with the supplied transition."
-  [^Job job transition]
+  [job :- Job
+   transition :- Transition]
   (update-in job [:transitions]
     (fn [transitions]
       (map #(if (are-same-transition transition %) transition %)
            transitions))))
 
-(defn add-transition [^Job job transition]
+(s/defn add-transition :- Job
+  [job :- Job
+   transition :- Transition]
   (update-in job [:transitions] conj transition))
 
-(defn remove-transition [^Job job transition]
+(s/defn remove-transition :- Job
+  [job :- Job
+   transition :- Transition]
   (update-in job [:transitions]
     (fn [transitions]
       (remove (partial are-same-transition transition) transitions))))

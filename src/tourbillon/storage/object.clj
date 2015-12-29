@@ -17,7 +17,7 @@
   (create! [this obj])
   (update! [this obj update-fn]))
 
-(defrecord InMemoryObjectStore [db serialize-fn unserialize-fn autoincrement]
+(defrecord InMemoryObjectStore [db schema autoincrement]
   component/Lifecycle
   (start [component]
     (log/info "Starting in-memory object store")
@@ -30,13 +30,12 @@
   ObjectStore
   (find-by-id [this id]
     (some-> @db
-      (get id)
-      unserialize-fn))
+      (get id)))
 
   (create! [this obj]
     (let [id (or (:id obj) (swap! autoincrement inc))
           obj (assoc obj :id id)]
-      (swap! db assoc id (serialize-fn obj))
+      (swap! db assoc id obj)
       obj))
 
   (update! [this obj update-fn]
@@ -44,7 +43,7 @@
       (swap! db update-in [id] update-fn)
       (find-by-id this id))))
 
-(defrecord MongoDBObjectStore [mongo-opts db-name collection serialize-fn unserialize-fn conn db]
+(defrecord MongoDBObjectStore [mongo-opts db-name collection schema conn db]
   component/Lifecycle
   (start [component]
     (log/info (str "Starting MongoDB object store (" db-name "/" collection ")"))
@@ -60,7 +59,7 @@
   ObjectStore
   (find-by-id [this id]
     (when-let [obj (mc/find-map-by-id (:db this) (:collection this) id)]
-      (unserialize-fn (rename-keys obj {:_id :id}))))
+      (rename-keys obj {:_id :id})))
 
   (create! [this obj]
     (let [id (or (:id obj) (utils/uuid))]
@@ -74,7 +73,7 @@
           (rename-keys updated {:id :_id}))
         updated))))
 
-(defrecord SQLObjectStore [db-spec table serialize-fn unserialize-fn conn]
+(defrecord SQLObjectStore [db-spec table conn]
   component/Lifecycle
   (start [component]
     (log/info "Starting SQL object store (" table ")")
@@ -89,12 +88,11 @@
     (some-> (select-row conn table id)
             (get :data)
             parse-with-kw
-            (assoc :id id)
-            unserialize-fn))
+            (assoc :id id)))
 
   (create! [this obj]
     (let [id (or (:id obj) (utils/uuid))]
-      (sql/insert! conn table {:id id :data (-> obj serialize-fn (dissoc :id) json/generate-string)})
+      (sql/insert! conn table {:id id :data (-> obj (dissoc :id) json/generate-string)})
       (assoc obj :id id)))
 
   (update! [this obj update-fn]
@@ -103,38 +101,28 @@
         (let [updated (-> retrieved
                           (get :data)
                           parse-with-kw
-                          unserialize-fn
                           update-fn)]
-          (sql/update! t-conn table {:data (-> updated serialize-fn json/generate-string)}
+          (sql/update! t-conn table {:data (-> updated json/generate-string)}
                        ["id = ?" (:id obj)])
           updated)))))
 
 (defmulti new-object-store :type)
 
 (defmethod new-object-store :local
-  [{:keys [db serialize-fn unserialize-fn]
-    :or {serialize-fn identity
-         unserialize-fn identity}}]
+  [{:keys [db schema]}]
   (map->InMemoryObjectStore {:db db
-                             :serialize-fn serialize-fn
-                             :unserialize-fn unserialize-fn
+                             :schema schema
                              :autoincrement (atom 0)}))
 
 (defmethod new-object-store :mongodb
-  [{:keys [mongo-opts db domain serialize-fn unserialize-fn]
-    :or {serialize-fn identity
-         unserialize-fn identity}}]
+  [{:keys [mongo-opts db domain schema]}]
   (map->MongoDBObjectStore {:mongo-opts mongo-opts
                             :db-name db
                             :collection domain
-                            :serialize-fn serialize-fn
-                            :unserialize-fn unserialize-fn}))
+                            :schema schema}))
 
 (defmethod new-object-store :sql
-  [{:keys [db-spec domain serialize-fn unserialize-fn]
-    :or {serialize-fn identity
-         unserialize-fn identity}}]
+  [{:keys [db-spec domain schema]}]
   (map->SQLObjectStore {:db-spec db-spec
                         :table domain
-                        :serialize-fn serialize-fn
-                        :unserialize-fn unserialize-fn}))
+                        :schema schema}))

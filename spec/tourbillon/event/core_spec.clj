@@ -3,10 +3,10 @@
             [tourbillon.event.core :refer :all]))
 
 (describe "Event record"
-  (with e-immediate (create-event "event-id" :job-id {}))
-  (with e-scheduled (create-event "event-id" :job-id 5 {}))
-  (with e-recurring (create-event "event-id" :job-id 5 10 {}))
-  (with e-cron (create-event "event-id" :job-id 5 "* * * * *" {}))
+  (with e-immediate (create-event "event-id" "job-id" {}))
+  (with e-scheduled (create-event "event-id" "job-id" 5 {}))
+  (with e-recurring (create-event "event-id" "job-id" 5 10 {}))
+  (with e-cron (create-event "event-id" "job-id" 5 "* * * * *" {}))
     
   (it "can be immediate"
       (should (is-immediate? @e-immediate))

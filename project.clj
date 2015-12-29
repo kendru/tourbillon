@@ -6,7 +6,7 @@
 
   :repl-options {:init-ns tourbillon.user}
 
-  :dependencies [[org.clojure/clojure "1.6.0"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
                  [com.stuartsierra/component "0.2.3"]
                  [org.clojure/tools.namespace "0.2.10"]
                  [http-kit "2.1.18"]
@@ -27,7 +27,8 @@
                  [com.mchange/c3p0 "0.9.2.1"]
                  [environ "1.0.0"]
                  [clj-time "0.10.0"]
-                 [overtone/at-at "1.2.0"]]
+                 [overtone/at-at "1.2.0"]
+                 [prismatic/schema "1.0.4"]]
 
   :plugins [[lein-environ "1.0.0"]
             [speclj "3.2.0"]]
@@ -44,7 +45,8 @@
              :uberjar {:aot :all}
              :dev {:dependencies [[ring-mock "0.1.5"]
                                   [ring/ring-devel "1.2.2"]
-                                  [speclj "3.2.0"]]}}
+                                  [speclj "3.2.0"]
+                                  [org.clojure/test.check "0.9.0"]]}}
 
 ;; In production, some of these will be overridden by environment variables
 :env {

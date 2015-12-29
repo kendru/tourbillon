@@ -1,16 +1,11 @@
 (ns tourbillon.event.core
   (:require [taoensso.timbre :as log]
             [tourbillon.event.cron :as cron]
-            [clj-time.coerce :as time-coerce]))
+            [tourbillon.domain :refer [Event]]
+            [clj-time.coerce :as time-coerce]
+            [schema.core :as s]))
 
 (def not-nil? (complement nil?))
-
-(defprotocol Temporal
-  "Something that exists at one or more points in time"
-  (is-immediate? [this])
-  (is-future? [this])
-  (is-recurring? [this])
-  (next-interval [this]))
 
 (defprotocol Interval
   "A thing that recurs at at intervals"
@@ -31,17 +26,36 @@
        1000))
   
   nil
-  (nxt [_ _] nil))
+  (succ [_ _] nil))
 
-(defrecord Event [id job-id start interval data]
-  Temporal
-  (is-immediate? [this] (every? nil? [start interval]))
-  (is-future? [this] (and (not-nil? start)
-                          (nil? interval)))
-  (is-recurring? [this] (every? not-nil? [start interval]))
-  (next-interval [this] (->Event id job-id (succ interval start) interval data)))
-
-(defn create-event
+(s/defn create-event :- Event
   ([id job-id data] (create-event id job-id nil nil data))
   ([id job-id at data] (create-event id job-id at nil data))
-  ([id job-id start interval data] (->Event id job-id start interval data)))
+  ([id job-id start interval data] {:id id
+                                    :job-id job-id
+                                    :start start
+                                    :interval interval
+                                    :data data}))
+
+(s/defn is-immediate? :- Boolean
+  [evt :- Event]
+  (and (nil? (:start evt))
+       (nil? (:interval evt))))
+
+(s/defn is-future? :- Boolean
+  [evt :- Event]
+  (and (not-nil? (:start evt))
+       (nil? (:interval evt))))
+
+(s/defn is-recurring?  :- Boolean
+  [evt :- Event]
+  (and (not-nil? (:start evt))
+       (not-nil? (:interval evt))))
+
+(s/defn next-interval :- Event
+  "Gets a new recurring Event representing the next occurrence
+  of the given Event"
+  [evt :- Event]
+  (let [{:keys [start interval]} evt]
+    (assoc evt :start (succ interval start))))
+

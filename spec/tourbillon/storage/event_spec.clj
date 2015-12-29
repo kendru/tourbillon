@@ -24,8 +24,8 @@
         (should= event (first found-events))))
 
   (it "gets multiple events"
-      (let [e1 (create-event "event1" :job-id 123 {})
-            e2 (create-event "event2" :job-id 123 {})
+      (let [e1 (create-event "event1" "job-id" 123 {})
+            e2 (create-event "event2" "job-id" 123 {})
             _ (do (store-event! *store* e1)
                   (store-event! *store* e2))
             found-events (get-events *store* 123)]
@@ -42,8 +42,8 @@
       (should-be empty? (get-events *store* 124)))
 
   (it "gets events before the requested timestamp if any exist"
-      (let [e1 (create-event "event1" :job-id 124 {})
-            e2 (create-event "event2" :job-id 123 {})
+      (let [e1 (create-event "event1" "job-id" 124 {})
+            e2 (create-event "event2" "job-id" 123 {})
             _ (do (store-event! *store* e1)
                   (store-event! *store* e2))
             found-events (get-events *store* 124)]
