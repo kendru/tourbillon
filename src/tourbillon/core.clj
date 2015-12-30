@@ -58,4 +58,4 @@
       :webserver (component/using
                    (new-server {:ip (get env :web-ip)
                                 :port (Integer/parseInt (get env :web-port))}) ;; TODO: replace IP and port
-                   [:job-store :workflow-store :account-store :template-store :scheduler]))))
+                   [:job-store :workflow-store :account-store :template-store :scheduler :subscriber-system]))))

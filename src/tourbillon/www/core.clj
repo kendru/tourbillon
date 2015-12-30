@@ -94,7 +94,7 @@
            (send-event! scheduler event)
            (response event)))))
 
-(defn job-routes [api-key job-store workflow-store]
+(defn job-routes [api-key job-store workflow-store subscriber-system]
   (routes
    (POST "/" {{:keys [transitions current-state workflow-id]
                :or {transitions []
@@ -134,7 +134,7 @@
                   (if-let [job (find-by-id job-store id)]
                     (if (= (:api-key job) api-key)
                       (response
-                       (emit! job-store (create-event event id data)))
+                       (emit! job-store subscriber-system (create-event event id data)))
                       (throw-unauthorized "Job does not match api key"))
                     (not-found {:status "error" :msg "No such job"})))
             
@@ -175,7 +175,7 @@
             (catch Object _
               template/malformed-template-response))))))
 
-(defn app-routes [job-store workflow-store account-store template-store scheduler]
+(defn app-routes [job-store workflow-store account-store template-store scheduler subscriber-system]
   (routes
     (GET "/" [] (content-type
                   (resource-response "index.html" {:root "public"})
@@ -197,7 +197,7 @@
                (event-routes api-key job-store scheduler))
 
       (context "/jobs" []
-               (-> (job-routes api-key job-store workflow-store)
+               (-> (job-routes api-key job-store workflow-store subscriber-system)
                    (wrap-routes without-api-key)))
 
       (context "/templates" []
@@ -205,13 +205,13 @@
 
     (not-found {:status "error" :msg "Not found"})))
 
-(defrecord Webserver [ip port connection job-store workflow-store account-store template-store scheduler]
+(defrecord Webserver [ip port connection job-store workflow-store account-store template-store scheduler subscriber-system]
   component/Lifecycle
 
   (start [component]
     (log/info "Starting web server")
 
-    (let [app (-> (app-routes job-store workflow-store account-store template-store scheduler)
+    (let [app (-> (app-routes job-store workflow-store account-store template-store scheduler subscriber-system)
                   handler/api
                   (wrap-access-rules {:rules access-rules :on-error auth/on-error})
                   (wrap-authorization auth/backend)
