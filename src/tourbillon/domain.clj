@@ -35,4 +35,3 @@
    :start (s/maybe Long)
    :interval (s/maybe (s/cond-pre s/Int String))
    :data {String s/Any}})
-

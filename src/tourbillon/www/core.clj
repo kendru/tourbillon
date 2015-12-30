@@ -14,7 +14,7 @@
             [buddy.auth.accessrules :refer [wrap-access-rules]]
             [clj-time.core :as t]
             [clj-time.coerce :as time-coerce]
-            [tourbillon.workflow.jobs :refer [get-job-status add-transition remove-transition update-subscribers emit!]]
+            [tourbillon.workflow.jobs :refer [get-job-status add-transition remove-transition update-subscribers emit! Workflow->Job]]
             [tourbillon.event.core :refer [create-event]]
             [tourbillon.event.cron :refer [parse-cron get-next-time]]
             [tourbillon.schedule.core :refer [send-event!]]
@@ -22,8 +22,19 @@
             [tourbillon.auth.accounts :as accounts]
             [tourbillon.auth.core :as auth]
             [tourbillon.template.core :as template]
+            [tourbillon.www.utils :refer :all]
+            [tourbillon.www.middleware :refer :all]
             [tourbillon.utils :as utils]
             [taoensso.timbre :as log]))
+
+(defn- get-at
+  "Get the initial time at which to fire an event, given
+  an initial time and cron spec that may be nil"
+  [at cron]
+  (if cron
+    (/ (time-coerce/to-long (get-next-time (t/now) cron)) 1000)
+    (if at
+      (max at (+ 1 (utils/get-time))))))
 
 (def access-rules [{:uris ["/" "/api/api-keys" "/api/session-tokens"]
                     :handler auth/any-access}
@@ -54,17 +65,115 @@
                     :request-method :get
                     :handler (auth/restrict-to "get-templates")}])
 
-(defn- json-request? [req]
-  (= "application/json" (get-in req [:headers "content-type"])))
+(defn workflow-routes [api-key workflow-store]
+  (routes
+   (POST "/" {{:keys [transitions start-state]
+               :or {transitions []}
+               :as data} :body}
+         (response
+          (create! workflow-store {:api-key api-key
+                                   :start-state start-state
+                                   :transitions transitions})))
+   (GET "/:id" [id]
+        (if-let [workflow (find-by-id workflow-store id)]
+          (if (= (:api-key workflow) api-key)
+            (response workflow)
+            (throw-unauthorized "Workflow does not match api key"))
+          (not-found {:status "error" :msg "No such workflow"})))))
 
-(defn- get-at
-  "Get the initial time at which to fire an event, given
-  an initial time and cron spec that may be nil"
-  [at cron]
-  (if cron
-    (/ (time-coerce/to-long (get-next-time (t/now) cron)) 1000)
-    (if at
-      (max at (+ 1 (utils/get-time))))))
+(defn event-routes [api-key job-store scheduler]
+  (routes
+   (POST "/" {{:keys [at every cron subscriber data]
+               :or {data {}}} :body}
+         (let [self-transition {:from "start" :to "start" :on "trigger" :subscribers [subscriber]}
+               at (get-at at (when cron (parse-cron cron)))
+               job (create! job-store {:api-key api-key
+                                       :current-state "start"
+                                       :transitions [self-transition]})
+               event (create-event "trigger" (:id job) at (or cron every) data)]
+           (send-event! scheduler event)
+           (response event)))))
+
+(defn job-routes [api-key job-store workflow-store]
+  (routes
+   (POST "/" {{:keys [transitions current-state workflow-id]
+               :or {transitions []
+                    current-state "start"}
+               :as data} :body}
+         (if workflow-id
+           (if-let [workflow (find-by-id workflow-store workflow-id)]
+             (if (= (:api-key workflow) api-key)
+               (let [job (Workflow->Job workflow)]
+                 (response
+                  (create! job-store (if (seq transitions)
+                                       (reduce update-subscribers job transitions)
+                                        job))))
+               (throw-unauthorized "Workflow does not match api key"))
+             (not-found {:status "error" :msg "No such workflow"}))
+           (response
+            (create! job-store {:api-key api-key
+                                :current-state current-state
+                                :transitions transitions}))))
+   (context "/:id" [id]
+            (GET "/" []
+                 (if-let [job (find-by-id job-store id)]
+                   (if (= (:api-key job) api-key)
+                     (response job)
+                     (throw-unauthorized "Job does not match api key"))
+                   
+                   (not-found {:status "error" :msg "No such job"})))
+            
+            (GET "/current-state" []
+                 (if-let [job (find-by-id job-store id)]
+                   (if (= (:api-key job) api-key)
+                     (response (get-job-status job))
+                     (throw-unauthorized "Job does not match api key"))
+                   (not-found {:status "error" :msg "No such job"})))
+            
+            (POST "/" {{:keys [event data]} :body}
+                  (if-let [job (find-by-id job-store id)]
+                    (if (= (:api-key job) api-key)
+                      (response
+                       (emit! job-store (create-event event id data)))
+                      (throw-unauthorized "Job does not match api key"))
+                    (not-found {:status "error" :msg "No such job"})))
+            
+            ;; Creates a new transition and returns the updated job
+            (POST "/transitions" {transition :body}
+                  (if-let [job (find-by-id job-store id)]
+                    (if (= (:api-key job) api-key)
+                      (response
+                       (update! job-store job #(add-transition % transition)))
+                      (throw-unauthorized "Job does not match api key"))
+                    (not-found {:status "error" :msg "No such job"})))
+            
+            (PUT "/transitions" {transition :body}
+                 (if-let [job (find-by-id job-store id)]
+                   (if (= (:api-key job) api-key)
+                     (response
+                      (update! job-store job #(update-subscribers % transition)))
+                     (throw-unauthorized "Job does not match api key"))
+                   (not-found {:status "error" :msg "No such job"})))
+            
+            ;; Removes transition from job
+            (DELETE "/transitions" {transition :body}
+                    (if-let [job (find-by-id job-store id)]
+                      (if (= (:api-key job) api-key)
+                        (response
+                         (update! job-store job #(remove-transition % transition)))
+                        (throw-unauthorized "Job does not match api key"))
+                      (not-found {:status "error" :msg "No such job"}))))))
+
+(defn template-routes [api-key template-store]
+  (routes
+   (POST "/" {:as req}
+         (let [text (if (json-request? req)
+                      (get-in req [:body :text])
+                      (body-string req))]
+           (try+
+            (response {:id (template/create-template! template-store api-key text)})
+            (catch Object _
+              template/malformed-template-response))))))
 
 (defn app-routes [job-store workflow-store account-store template-store scheduler]
   (routes
@@ -81,102 +190,18 @@
             (response (accounts/create-session-token account-store api-key api-secret)))
 
       (context "/workflows" []
-        (POST "/" {{:keys [transitions start-state]
-                    :or {transitions []}
-                    :as data} :body}
-              (response
-               (create! workflow-store {:api-key api-key
-                                        :start-state start-state
-                                        :transitions transitions})))
-        (GET "/:id" [id]
-             (if-let [workflow (find-by-id workflow-store id)]
-               (if (= (:api-key workflow) api-key)
-                 (response workflow)
-                 (throw-unauthorized "Workflow does not match api key"))
-               (not-found {:status "error" :msg "No such workflow"}))))
+               (-> (workflow-routes api-key workflow-store)
+                   (wrap-routes without-api-key)))
 
       (context "/events" []
-        (POST "/" {{:keys [at every cron subscriber data]
-                    :or {data {}}} :body}
-              (let [self-transition {:from "start" :to "start" :on "trigger" :subscribers [subscriber]}
-                    at (get-at at (when cron (parse-cron cron)))
-                    job (create! job-store {:api-key api-key
-                                            :current-state "start"
-                                            :transitions [self-transition]})
-                    event (create-event "trigger" (:id job) at (or cron every) data)]
-                (send-event! scheduler event)
-                (response event))))
+               (event-routes api-key job-store scheduler))
 
       (context "/jobs" []
-        (POST "/" {{:keys [transitions current-state]
-                    :or {transitions []
-                         current-state "start"}
-                    :as data} :body}
-              (response
-               (create! job-store {:api-key api-key
-                                   :current-state current-state
-                                   :transitions transitions})))
-
-        ;; TODO: Refactor the checks for job existence and api key match into middleware
-        (context "/:id" [id]
-          (GET "/" []
-            (if-let [job (find-by-id job-store id)]
-              (if (= (:api-key job) api-key)
-                (response job)
-                (throw-unauthorized "Job does not match api key"))
-
-              (not-found {:status "error" :msg "No such job"})))
-
-          (GET "/current-state" []
-            (if-let [job (find-by-id job-store id)]
-              (if (= (:api-key job) api-key)
-                (response (get-job-status job))
-                (throw-unauthorized "Job does not match api key"))
-              (not-found {:status "error" :msg "No such job"})))
-
-          (POST "/" {{:keys [event data]} :body}
-            (if-let [job (find-by-id job-store id)]
-              (if (= (:api-key job) api-key)
-                (response
-                  (emit! job-store (create-event event id data)))
-                (throw-unauthorized "Job does not match api key"))
-              (not-found {:status "error" :msg "No such job"})))
-
-          ;; Creates a new transition and returns the updated job
-          (POST "/transitions" {transition :body}
-            (if-let [job (find-by-id job-store id)]
-              (if (= (:api-key job) api-key)
-                (response
-                  (update! job-store job #(add-transition % transition)))
-                (throw-unauthorized "Job does not match api key"))
-              (not-found {:status "error" :msg "No such job"})))
-
-          (PUT "/transitions" {transition :body}
-            (if-let [job (find-by-id job-store id)]
-              (if (= (:api-key job) api-key)
-                (response
-                  (update! job-store job #(update-subscribers % transition)))
-                (throw-unauthorized "Job does not match api key"))
-              (not-found {:status "error" :msg "No such job"})))
-
-          ;; Removes transition from job
-          (DELETE "/transitions" {transition :body}
-            (if-let [job (find-by-id job-store id)]
-              (if (= (:api-key job) api-key)
-                (response
-                  (update! job-store job #(remove-transition % transition)))
-                (throw-unauthorized "Job does not match api key"))
-              (not-found {:status "error" :msg "No such job"})))))
+               (-> (job-routes api-key job-store workflow-store)
+                   (wrap-routes without-api-key)))
 
       (context "/templates" []
-        (POST "/" {:as req}
-          (let [text (if (json-request? req)
-                       (get-in req [:body :text])
-                       (body-string req))]
-            (try+
-              (response {:id (template/create-template! template-store api-key text)})
-              (catch Object _
-                template/malformed-template-response))))))
+               (template-routes api-key template-store)))
 
     (not-found {:status "error" :msg "Not found"})))
 
