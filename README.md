@@ -39,7 +39,7 @@ Please see the API description page for details of the message specification.
 
 ## License
 
-Copyright © 2014-2015 Andrew S. Meredith
+Copyright © 2014-2016 Andrew S. Meredith
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
