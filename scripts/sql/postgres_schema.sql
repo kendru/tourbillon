@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS events (
     id VARCHAR,
     job_id VARCHAR,
     "start" BIGINT NOT NULL,
-    "interval" INT NULL,
+    "interval" TEXT NULL,
     data TEXT,
     is_expired BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (id, job_id, "start")

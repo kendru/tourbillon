@@ -84,6 +84,11 @@
                                       {:remove true})]
       (mapcat :events records))))
 
+(defn maybe-as-num [s]
+  (if (re-find #"^\d+$" s)
+    (BigInteger. s)
+    s))
+
 (defrecord SQLEventStore [db-spec table conn]
   component/Lifecycle
   (start [component]
@@ -100,7 +105,7 @@
       (sql/insert! conn table {:id id
                                :job_id job-id
                                :start start
-                               :interval interval
+                               :interval (str interval)
                                :data (json/generate-string data)})))
 
   (get-events [this timestamp]
@@ -115,6 +120,7 @@
       (mapv (fn [row]
               (-> row
                   (update-in [:data] #(json/parse-string % true))
+                  (update-in [:interval] maybe-as-num)
                   (rename-keys {:job_id :job-id})))
             events))))
 

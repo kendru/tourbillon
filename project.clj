@@ -53,8 +53,10 @@
 :env {
       ;; Global/environment
       :app-env "dev"
-      :object-store-type "local"
-      :event-store-type "local"
+      :object-store-type "sql"
+      ;:object-store-type "local"
+      :event-store-type "sql"
+      ;:event-store-type "local"
 
       ;; Web server
       :web-ip "0.0.0.0"
