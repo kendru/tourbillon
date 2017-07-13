@@ -14,6 +14,7 @@
                  [ring-server "0.4.0"]
                  [ring/ring-ssl "0.2.1"]
                  [ring/ring-json "0.3.1"]
+                 [ring/ring-codec "1.0.1"]
                  [buddy/buddy "0.5.5"]
                  [slingshot "0.12.2"]
                  [stencil "0.4.0"]
@@ -57,7 +58,7 @@
 
       ;; Web server
       :web-ip "0.0.0.0"
-      :web-port "3000"
+      :web-port "3300"
 
       ;; Storage
       :mongo-host "127.0.0.1"
@@ -69,7 +70,7 @@
       :sql-classname "org.postgresql.Driver"
       :sql-subprotocol "postgresql"
       :sql-host "127.0.0.1"
-      :sql-port "5432"
+      :sql-port "6543"
       :sql-database "tourbillon"
       :sql-user "tourbillon"
       :sql-password "s3cr3t"

@@ -7,20 +7,19 @@
             [slingshot.slingshot :refer [try+ throw+]]
             [postal.core :as postal]
             [org.httpkit.client :as http]
+            [tourbillon.workflow.handler.core :as handler]
+            [tourbillon.workflow.handler.webhook :as webhook]
             [tourbillon.template.core :refer [render-template]]))
 
-(defprotocol SubscriberHandler
-  (notify! [this subscriber data])
-  (get-required-params [this]))
 
 (def builtin-handlers
   {:log (reify
-          SubscriberHandler
+          handler/SubscriberHandler
           (notify! [_ subscriber data] (log/info data))
           (get-required-params [_] nil))
 
    :email (reify
-            SubscriberHandler
+            handler/SubscriberHandler
             (notify! [_ {:keys [recipient sender subject body]
                          :or {sender (get env :smtp-sender)}} data]
               (let [result (postal/send-message {:user (get env :smtp-user)
@@ -31,11 +30,11 @@
                                       :to recipient
                                       :subject subject
                                       :body body})]
-                (log/info "Sent email" recipient result)))
+                (log/debug "Sent email" recipient result)))
             (get-required-params [_] #{:recipient :subject :body}))
 
    :sms (reify
-          SubscriberHandler
+          handler/SubscriberHandler
           (notify! [_ {:keys [recipient body]} data]
             (try+
               (http/post (str "https://api.twilio.com/2010-04-01/Accounts/" (get env :twilio-sid) "/Messages.json")
@@ -47,19 +46,12 @@
                          (fn [{:keys [status body error]}]
                           (if error
                             (log/warn "Error sending sms" error)
-                            (log/info "Sent sms" recipient body))))
+                            (log/debug "Sent sms" recipient body))))
               (catch Object e
                 (log/error "Error sending sms" (.getMessage e)))))
           (get-required-params [_] #{:recipient :body}))
 
-   :webhook (reify
-              SubscriberHandler
-              (notify! [_ {:keys [url method]} data]
-                (log/info (str method " : " url " : " data))
-                (if (= (lower-case method) "get")
-                  (http/get url {:query-params data})
-                  (http/post url {:body data})))
-              (get-required-params [_] #{:url :method}))})
+   :webhook (webhook/handler)})
 
 (defn- get-type-of-missing-handler [subscriber-system {:keys [type]}]
   (when-not (get-in subscriber-system [:handlers (keyword type)])
@@ -100,14 +92,19 @@
 
   SubscriberSystem
   (notify-all! [this subscribers data]
-    (log/info "Notifying subscribers!")
-    (when-let [missing-type (some (partial get-type-of-missing-handler this) subscribers)](log/warn "Missing subscriber :(" missing-type)
-      (throw+ {:type ::no-handler :subscriber-type missing-type :message "No handler defined for subscriber type"}))
+    (log/debug "Notifying subscribers!")
+    (when-let [missing-type (some (partial get-type-of-missing-handler this) subscribers)]
+      (log/warn "Missing subscriber:" missing-type)
+      (throw+ {:type ::no-handler
+               :subscriber-type missing-type
+               :message "No handler defined for subscriber type"}))
     (doseq [{:keys [type] :as subscriber} subscribers
             :let [handler (get-in this [:handlers (keyword type)])]]
-      (notify! handler (-> subscriber
+      (handler/notify! handler
+                       (-> subscriber
                            (dissoc :type)
-                           (prepare-templates (:template-store this) data)) data))))
+                           (prepare-templates (:template-store this) data))
+                       data))))
 
 (defn new-subscriber-system []
   (map->DefaultSubscriberSystem {}))
