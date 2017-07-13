@@ -50,20 +50,36 @@
              :dev {:dependencies [[ring-mock "0.1.5"]
                                   [ring/ring-devel "1.2.2"]
                                   [speclj "3.2.0"]
-                                  [org.clojure/test.check "0.9.0"]]}}
+                                  [org.clojure/test.check "0.9.0"]]
+                   :env {
+                         :app-env "dev"
+                         :object-store-type "local"
+                         :event-store-type "local"
+                         :web-port "3300"
+                         
+                         ;; Security
+                         :hmac-secret "s3cr3t"
+                         :data-secret "Aphnets3vI1Zbbct2wVJDG1/LXyxprpudjAQWS8oVjg="
+
+                         :sql-password "s3cr3t"}}}
 
 ;; In production, some of these will be overridden by environment variables
 :env {
       ;; Global/environment
-      :app-env "dev"
+      :app-env "production"
       :object-store-type "sql"
-      ;:object-store-type "local"
       :event-store-type "sql"
-      ;:event-store-type "local"
+
+      ;; Security
+      ;; Any secret key - used for signing session JWTs
+      ; :hmac-secret "s3cr3t"
+      
+      ;; base64-encoded 32-byte string, used to encrypt data at rest
+      ; :data-secret "Aphnets3vI1Zbbct2wVJDG1/LXyxprpudjAQWS8oVjg="
 
       ;; Web server
       :web-ip "0.0.0.0"
-      :web-port "3300"
+      :web-port "80"
 
       ;; Storage
       :mongo-host "127.0.0.1"
@@ -78,11 +94,7 @@
       :sql-port "6543"
       :sql-database "tourbillon"
       :sql-user "tourbillon"
-      :sql-password "s3cr3t"
-
-      ;; Security
-      :hmac-secret "s3cr3t"
-      :data-secret "Aphnets3vI1Zbbct2wVJDG1/LXyxprpudjAQWS8oVjg="
+      ; :sql-password "s3cr3t"
 
       ;; Email subscriber
       :smtp-host "REPLACEME"
