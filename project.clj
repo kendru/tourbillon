@@ -72,7 +72,7 @@
       :sql-port "5432"
       :sql-database "tourbillon"
       :sql-user "tourbillon"
-      :sql-password "tourbillon"
+      :sql-password "s3cr3t"
 
       ;; Security
       :hmac-secret "s3cr3t"

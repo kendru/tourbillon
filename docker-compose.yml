@@ -1,0 +1,18 @@
+version: "3.3"
+
+services:
+  postgres:
+    image: postgres:9.6-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tourbillon
+      POSTGRES_USER: tourbillon
+      POSTGRES_PASSWORD: s3cr3t
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ./scripts/sql:/docker-entrypoint-initdb.d
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
