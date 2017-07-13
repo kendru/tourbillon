@@ -92,7 +92,7 @@
 
   SubscriberSystem
   (notify-all! [this subscribers data]
-    (log/debug "Notifying subscribers!")
+    (log/debug "Notifying subscribers")
     (when-let [missing-type (some (partial get-type-of-missing-handler this) subscribers)]
       (log/warn "Missing subscriber:" missing-type)
       (throw+ {:type ::no-handler

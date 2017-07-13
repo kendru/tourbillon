@@ -1,16 +1,15 @@
 (ns tourbillon.storage.object
   (:require [com.stuartsierra.component :as component]
+            [tourbillon.storage.encryption :refer [serialize deserialize]]
+            [buddy.core.nonce :as nonce]
             [monger.core :as mg]
             [monger.collection :as mc]
             [clojure.java.jdbc :as sql]
-            [cheshire.core :as json]
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
             [tourbillon.utils :as utils]
             [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
 
-(defn- parse-with-kw [string]
-  (json/parse-string string true))
 
 (defprotocol ObjectStore
   (find-by-id [this id])
@@ -43,6 +42,7 @@
       (swap! db update-in [id] update-fn)
       (find-by-id this id))))
 
+;; Note that this object store does not encrypt the data that it receives
 (defrecord MongoDBObjectStore [mongo-opts db-name collection schema conn db]
   component/Lifecycle
   (start [component]
@@ -73,6 +73,8 @@
           (rename-keys updated {:id :_id}))
         updated))))
 
+;; We could probably be smarter about normalizing the data model and only encrypting
+;; the user-supplied data
 (defrecord SQLObjectStore [db-spec table conn]
   component/Lifecycle
   (start [component]
@@ -85,24 +87,24 @@
 
   ObjectStore
   (find-by-id [this id]
-    (some-> (select-row conn table id)
-            (get :data)
-            parse-with-kw
-            (assoc :id id)))
+    (let [{:keys [data iv]} (select-row conn table id)]
+      (-> data
+          (deserialize iv)
+          (assoc :id id))))
 
   (create! [this obj]
-    (let [id (or (:id obj) (utils/uuid))]
-      (sql/insert! conn table {:id id :data (-> obj (dissoc :id) json/generate-string)})
+    (let [id (or (:id obj) (utils/uuid))
+          iv (nonce/random-bytes 12)]
+      (sql/insert! conn table {:id id
+                               :data (serialize (dissoc obj :id) iv)
+                               :iv iv})
       (assoc obj :id id)))
 
   (update! [this obj update-fn]
     (sql/with-db-transaction [t-conn conn]
-      (when-let [retrieved (select-row t-conn table (:id obj))]
-        (let [updated (-> retrieved
-                          (get :data)
-                          parse-with-kw
-                          update-fn)]
-          (sql/update! t-conn table {:data (-> updated json/generate-string)}
+      (when-let [{:keys [data iv]} (select-row t-conn table (:id obj))]
+        (let [updated (update-fn (deserialize data iv))]
+          (sql/update! t-conn table {:data (serialize updated iv)}
                        ["id = ?" (:id obj)])
           updated)))))
 

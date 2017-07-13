@@ -1,16 +1,18 @@
 (ns tourbillon.storage.event
   (:require [com.stuartsierra.component :as component]
+            [tourbillon.storage.encryption :refer [serialize deserialize]]
+            [buddy.core.nonce :as nonce]
             [monger.core :as mg]
             [monger.collection :as mc]
             [monger.operators :refer :all]
             [clojure.java.jdbc :as sql]
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
-            [cheshire.core :as json]
             [schema.core :as s]
             [tourbillon.utils :as utils]
             [tourbillon.domain :refer [Event]]
             [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
+
 
 (defn exc-inc-range
   "Gets a numeric range from start (exclusive) to end (inclusive),
@@ -18,8 +20,10 @@
   [start end]
   (reverse (range end start -1)))
 
+
 (defn mapcat-eager [f xs]
   (->> xs (map f) (reduce concat)))
+
 
 (defprotocol EventStore
   (store-event! [this event])
@@ -49,7 +53,6 @@
     (let [{:keys [db]} this
           all-timestamps (exc-inc-range @last-check-time timestamp)
           events (mapcat-eager #(get @db % '()) all-timestamps)]
-      #_(log/debug (str "Getting events in " all-timestamps))
       (swap! db #(apply dissoc % all-timestamps))
       (reset! last-check-time timestamp)
       events)))
@@ -84,10 +87,12 @@
                                       {:remove true})]
       (mapcat :events records))))
 
+
 (defn maybe-as-num [s]
   (if (re-find #"^\d+$" s)
     (BigInteger. s)
     s))
+
 
 (defrecord SQLEventStore [db-spec table conn]
   component/Lifecycle
@@ -101,27 +106,28 @@
 
   EventStore
   (store-event! [this event]
-    (let [{:keys [id job-id start interval data]} event]
+    (let [{:keys [id job-id start interval data]} event
+          iv (nonce/random-bytes 12)]
       (sql/insert! conn table {:id id
                                :job_id job-id
                                :start start
                                :interval (str interval)
-                               :data (json/generate-string data)})))
+                               :data (serialize data iv)
+                               :iv iv})))
 
   (get-events [this timestamp]
     (let [query (str "UPDATE " (sql/quoted \" table)
                      " SET is_expired = true"
                      " WHERE \"start\" <= ?"
                      " AND is_expired = false"
-                     " RETURNING id, job_id, \"start\", \"interval\", data")
+                     " RETURNING id, job_id, \"start\", \"interval\", data, iv")
           events (sql/query conn [query timestamp])]
-      (when (seq events)
-        (log/debug "Found events" timestamp events))
       (mapv (fn [row]
               (-> row
-                  (update-in [:data] #(json/parse-string % true))
+                  (update-in [:data] #(deserialize % (:iv row)))
                   (update-in [:interval] maybe-as-num)
-                  (rename-keys {:job_id :job-id})))
+                  (rename-keys {:job_id :job-id})
+                  (dissoc :iv)))
             events))))
 
 (defmulti new-event-store :type)

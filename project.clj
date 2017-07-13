@@ -15,7 +15,10 @@
                  [ring/ring-ssl "0.2.1"]
                  [ring/ring-json "0.3.1"]
                  [ring/ring-codec "1.0.1"]
-                 [buddy/buddy "0.5.5"]
+                 [buddy/buddy-core "1.2.0"]
+                 [buddy/buddy-hashers "1.2.0"]
+                 [buddy/buddy-auth "1.4.1"]
+                 [buddy/buddy-sign "1.5.0"]
                  [slingshot "0.12.2"]
                  [stencil "0.4.0"]
                  [crypto-random "1.2.0"]
@@ -79,6 +82,7 @@
 
       ;; Security
       :hmac-secret "s3cr3t"
+      :data-secret "Aphnets3vI1Zbbct2wVJDG1/LXyxprpudjAQWS8oVjg="
 
       ;; Email subscriber
       :smtp-host "REPLACEME"

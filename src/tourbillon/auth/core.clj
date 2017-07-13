@@ -3,7 +3,7 @@
             [environ.core :refer [env]]
             [buddy.auth :as auth]
             [buddy.auth.accessrules :refer [success error]]
-            [buddy.sign.jws :as jws]
+            [buddy.sign.jwt :as jwt]
             [buddy.auth.backends.token :refer [jws-backend]]
             [clj-time.core :as time]))
 
@@ -20,10 +20,10 @@
       (clojure.set/rename-keys {:id :api-key})))
 
 (defn sign-claim [claim]
-  (jws/sign claim secret))
+  (jwt/sign claim secret))
 
 (defn unsign-token [token]
-  (jws/unsign token secret))
+  (jwt/unsign token secret))
 
 ;; Auth handlers
 
