@@ -30,12 +30,15 @@
 (defn process-events!
   "Gets any new events from the event store and sends them to their respective jobs"
   [{:keys [job-store event-store subscriber-system]}]
-  (let [events (event/get-events event-store (utils/get-time))]
-    (when-not (empty? events)
-      (doseq [event events]
-        (emit! job-store subscriber-system event)
-        (when (is-recurring? event)
-          (event/store-event! event-store (next-interval event)))))))
+  (try
+    (let [events (event/get-events event-store (utils/get-time))]
+      (when-not (empty? events)
+        (doseq [event events]
+          (emit! job-store subscriber-system event)
+          (when (is-recurring? event)
+            (event/store-event! event-store (next-interval event))))))
+    (catch Exception e
+      (log/error e "Error processing events!"))))
 
 
 (defrecord Scheduler [poll-freq thread-pool job-store event-store subscriber-system scheduler]

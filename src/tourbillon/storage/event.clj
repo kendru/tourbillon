@@ -25,9 +25,10 @@
   "Returns the supplied input string as a BigInteger only if it is a
   totally numeric string."
   [s]
-  (if (re-find #"^\d+$" s)
-    (BigInteger. s)
-    s))
+  (when s
+    (if (re-find #"^\d+$" s)
+      (BigInteger. s)
+      s)))
 
 
 (def quote-sql-ident (sql/quoted \"))
@@ -108,7 +109,7 @@
       (sql/insert! conn table {:id id
                                :job_id job-id
                                :start start
-                               :interval (str interval)
+                               :interval (when interval (str interval))
                                :data (s/serialize serializer data)})))
 
   (get-events [this timestamp]
@@ -116,7 +117,7 @@
                      " SET is_expired = true"
                      " WHERE \"start\" <= ?"
                      " AND is_expired = false"
-                     " RETURNING id, job_id, \"start\", \"interval\", data, iv")
+                     " RETURNING id, job_id, \"start\", \"interval\", data")
           {:keys [conn]} postgres
           events (sql/query conn [query timestamp])]
       (mapv (fn [row]
