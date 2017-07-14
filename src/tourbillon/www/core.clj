@@ -61,9 +61,9 @@
                    {:uri "/api/templates"
                     :request-method :post
                     :handler (auth/restrict-to "create-templates")}
-                  {:uri "/api/templates/:id"
-                    :request-method :get
-                    :handler (auth/restrict-to "get-templates")}])
+                   {:uri "/api/templates/:id"
+                     :request-method :get
+                     :handler (auth/restrict-to "get-templates")}])
 
 (defn workflow-routes [api-key workflow-store]
   (routes
@@ -107,7 +107,7 @@
                  (response
                   (create! job-store (if (seq transitions)
                                        (reduce update-subscribers job transitions)
-                                        job))))
+                                       job))))
                (throw-unauthorized "Workflow does not match api key"))
              (not-found {:status "error" :msg "No such workflow"}))
            (response
@@ -175,7 +175,7 @@
             (catch Object _
               template/malformed-template-response))))))
 
-(defn app-routes [job-store workflow-store account-store template-store scheduler subscriber-system]
+(defn app-routes [job-store workflow-store account-store template-store scheduler subscriber-system signer]
   (routes
     (GET "/" [] (content-type
                   (resource-response "index.html" {:root "public"})
@@ -187,7 +187,7 @@
       (POST "/api-keys" []
             (response (accounts/create-api-key! account-store)))
       (POST "/session-tokens" {{:keys [api-key api-secret]} :body}
-            (response (accounts/create-session-token account-store api-key api-secret)))
+            (response (accounts/create-session-token signer account-store api-key api-secret)))
 
       (context "/workflows" []
                (-> (workflow-routes api-key workflow-store)
@@ -205,17 +205,17 @@
 
     (not-found {:status "error" :msg "Not found"})))
 
-(defrecord Webserver [ip port connection job-store workflow-store account-store template-store scheduler subscriber-system]
+(defrecord Webserver [ip port connection job-store workflow-store account-store template-store scheduler subscriber-system signer]
   component/Lifecycle
 
   (start [component]
     (log/info "Starting web server")
 
-    (let [app (-> (app-routes job-store workflow-store account-store template-store scheduler subscriber-system)
+    (let [app (-> (app-routes job-store workflow-store account-store template-store scheduler subscriber-system signer)
                   handler/api
                   (wrap-access-rules {:rules access-rules :on-error auth/on-error})
-                  (wrap-authorization auth/backend)
-                  (wrap-authentication auth/backend)
+                  (wrap-authorization (auth/backend signer))
+                  (wrap-authentication (auth/backend signer))
                   (wrap-json-body {:keywords? true})
                   (wrap-json-response {:pretty true}))
           conn (server/run-server app {:ip ip :port port})]
@@ -224,8 +224,8 @@
   (stop [component]
     (log/info "Stopping web server")
 
-        (connection)
-        (dissoc component :connection)))
+    (connection)
+    (dissoc component :connection)))
 
-(defn new-server [{:keys [ip port]}]
-  (map->Webserver {:ip ip :port port}))
+(defn new-server [cfg]
+  (map->Webserver cfg))

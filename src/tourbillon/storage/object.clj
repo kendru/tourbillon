@@ -1,14 +1,13 @@
 (ns tourbillon.storage.object
   (:require [com.stuartsierra.component :as component]
-            [tourbillon.storage.encryption :refer [serialize deserialize]]
-            [buddy.core.nonce :as nonce]
-            [monger.core :as mg]
+            [tourbillon.infr.config :as config]
+            [tourbillon.infr.serializer :as s]
             [monger.collection :as mc]
             [clojure.java.jdbc :as sql]
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
             [tourbillon.utils :as utils]
-            [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
+            [tourbillon.storage.sql-helpers :refer [select-row]]))
 
 
 (defprotocol ObjectStore
@@ -16,11 +15,11 @@
   (create! [this obj])
   (update! [this obj update-fn]))
 
-(defrecord InMemoryObjectStore [db schema autoincrement]
+(defrecord InMemoryObjectStore [autoincrement atom-db]
   component/Lifecycle
   (start [component]
     (log/info "Starting in-memory object store")
-    (assoc component :db db))
+    (assoc component :atom-db atom-db))
 
   (stop [component]
     (log/info "Stopping in-memory object store")
@@ -28,103 +27,111 @@
 
   ObjectStore
   (find-by-id [this id]
-    (some-> @db
-      (get id)))
+    (let [db (:db atom-db)]
+      (some-> @db
+        (get id))))
 
   (create! [this obj]
-    (let [id (or (:id obj) (swap! autoincrement inc))
+    (let [db (:db atom-db)
+          id (or (:id obj) (swap! autoincrement inc))
           obj (assoc obj :id id)]
       (swap! db assoc id obj)
       obj))
 
   (update! [this obj update-fn]
-    (let [id (:id obj)]
+    (let [db (:db atom-db)
+          id (:id obj)]
       (swap! db update-in [id] update-fn)
       (find-by-id this id))))
 
 ;; Note that this object store does not encrypt the data that it receives
-(defrecord MongoDBObjectStore [mongo-opts db-name collection schema conn db]
+(defrecord MongoDBObjectStore [collection mongo]
   component/Lifecycle
   (start [component]
-    (log/info (str "Starting MongoDB object store (" db-name "/" collection ")"))
-    (let [conn (mg/connect mongo-opts)]
-      (assoc component :conn conn
-                       :db (mg/get-db conn db-name))))
+    (log/info (str "Starting MongoDB object store (" collection ")"))
+    component)
 
   (stop [component]
-    (log/info (str "Stopping MongoDB object store (" db-name "/" collection ")"))
-    (mg/disconnect (:conn component))
-    (assoc component :db nil :conn nil))
+    (log/info (str "Stopping MongoDB object store (/" collection ")"))
+    component)
 
   ObjectStore
   (find-by-id [this id]
-    (when-let [obj (mc/find-map-by-id (:db this) (:collection this) id)]
-      (rename-keys obj {:_id :id})))
+    (let [{:keys [mongo collection]} this
+          {:keys [:db]} mongo]
+      (when-let [obj (mc/find-map-by-id db collection id)]
+        (rename-keys obj {:_id :id}))))
 
   (create! [this obj]
-    (let [id (or (:id obj) (utils/uuid))]
-      (mc/insert (:db this) (:collection this) (-> obj (assoc :_id id) (dissoc :id)))
+    (let [{:keys [mongo collection]} this
+          {:keys [:db]} mongo
+          id (or (:id obj) (utils/uuid))]
+      (mc/insert db collection (-> obj (assoc :_id id) (dissoc :id)))
       (assoc obj :id id)))
 
   (update! [this obj update-fn]
-    (when-let [retrieved (mc/find-map-by-id (:db this) (:collection this) (:id obj))]
-      (let [updated (update-fn (rename-keys retrieved {:_id :id}))]
-        (mc/update-by-id (:db this) (:collection this) (:id obj)
-          (rename-keys updated {:id :_id}))
-        updated))))
+    (let [{:keys [mongo collection]} this
+          {:keys [:db]} mongo
+          {:keys [:id]} obj]
+      (when-let [retrieved (mc/find-map-by-id db collection id)]
+        (let [updated (update-fn (rename-keys retrieved {:_id :id}))]
+          (mc/update-by-id db collection id
+            (rename-keys updated {:id :_id}))
+          updated)))))
 
 ;; We could probably be smarter about normalizing the data model and only encrypting
 ;; the user-supplied data
-(defrecord SQLObjectStore [db-spec table conn]
+(defrecord PostgresObjectStore [table serializer postgres]
   component/Lifecycle
   (start [component]
-    (log/info "Starting SQL object store (" table ")")
-    (assoc component :conn (mk-connection-pool db-spec)))
+    (log/info "Starting Postgres object store (" table ")")
+    component)    
 
   (stop [component]
-    (log/info "Stopping SQL object store (" table ")")
-    (assoc component :conn nil))
+    (log/info "Stopping Postgres object store (" table ")")
+    component)
 
   ObjectStore
   (find-by-id [this id]
-    (let [{:keys [data iv]} (select-row conn table id)]
-      (-> data
-          (deserialize iv)
-          (assoc :id id))))
+    (let [{:keys [conn]} postgres]
+      (some-> (select-row conn table id)
+              (get :data)
+              (->> (s/deserialize serializer))
+              (assoc :id id))))
 
-  (create! [this obj]
-    (let [id (or (:id obj) (utils/uuid))
-          iv (nonce/random-bytes 12)]
-      (sql/insert! conn table {:id id
-                               :data (serialize (dissoc obj :id) iv)
-                               :iv iv})
+  (create! [this {:keys [id] :as obj}]
+    (let [{:keys [conn]} postgres
+          id (or id (utils/uuid))]
+      (sql/insert! conn table
+        {:id id
+         :data (s/serialize serializer (dissoc obj :id))})
       (assoc obj :id id)))
 
-  (update! [this obj update-fn]
-    (sql/with-db-transaction [t-conn conn]
-      (when-let [{:keys [data iv]} (select-row t-conn table (:id obj))]
-        (let [updated (update-fn (deserialize data iv))]
-          (sql/update! t-conn table {:data (serialize updated iv)}
-                       ["id = ?" (:id obj)])
+  (update! [this {:keys [id] :as obj} update-fn]
+    (sql/with-db-transaction [t-conn (:conn postgres)]
+      (when-let [{:keys [data]} (select-row t-conn table id)]
+        (let [updated (update-fn (s/deserialize serializer data))]
+          (sql/update! t-conn table
+                       {:data (s/serialize serializer updated)}
+                       ["id = ?" id])
           updated)))))
 
-(defmulti new-object-store :type)
+(defmulti make-store
+  (fn [cfg schema domain]
+    (get-in cfg [:global :object-store-type])))
 
-(defmethod new-object-store :local
-  [{:keys [db schema]}]
-  (map->InMemoryObjectStore {:db db
-                             :schema schema
-                             :autoincrement (atom 0)}))
+(defmethod make-store :local
+  [_ _ _]
+  (map->InMemoryObjectStore
+    {:autoincrement (atom 0)}))
 
-(defmethod new-object-store :mongodb
-  [{:keys [mongo-opts db domain schema]}]
-  (map->MongoDBObjectStore {:mongo-opts mongo-opts
-                            :db-name db
-                            :collection domain
-                            :schema schema}))
+(defmethod make-store :mongo
+  [_ _ domain]
+  (map->MongoDBObjectStore
+    {:collection domain}))
+                            
 
-(defmethod new-object-store :sql
-  [{:keys [db-spec domain schema]}]
-  (map->SQLObjectStore {:db-spec db-spec
-                        :table domain
-                        :schema schema}))
+(defmethod make-store :postgres
+  [_ _ domain]
+  (map->PostgresObjectStore
+    {:table domain}))

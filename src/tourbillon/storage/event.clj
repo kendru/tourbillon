@@ -1,28 +1,36 @@
 (ns tourbillon.storage.event
   (:require [com.stuartsierra.component :as component]
-            [tourbillon.storage.encryption :refer [serialize deserialize]]
-            [buddy.core.nonce :as nonce]
-            [monger.core :as mg]
+            [tourbillon.infr.serializer :as s]
             [monger.collection :as mc]
             [monger.operators :refer :all]
             [clojure.java.jdbc :as sql]
             [taoensso.timbre :as log]
             [clojure.set :refer [rename-keys]]
-            [schema.core :as s]
             [tourbillon.utils :as utils]
-            [tourbillon.domain :refer [Event]]
-            [tourbillon.storage.sql-helpers :refer [mk-connection-pool select-row]]))
+            [tourbillon.storage.sql-helpers :refer [select-row]]))
 
 
 (defn exc-inc-range
   "Gets a numeric range from start (exclusive) to end (inclusive),
   with an optional step parameter"
   [start end]
-  (reverse (range end start -1)))
+  (range (inc start) (inc end)))
 
 
 (defn mapcat-eager [f xs]
   (->> xs (map f) (reduce concat)))
+
+
+(defn maybe-as-num
+  "Returns the supplied input string as a BigInteger only if it is a
+  totally numeric string."
+  [s]
+  (if (re-find #"^\d+$" s)
+    (BigInteger. s)
+    s))
+
+
+(def quote-sql-ident (sql/quoted \"))
 
 
 (defprotocol EventStore
@@ -32,7 +40,7 @@
 ;; Note that retrieval is NOT an efficient operation - it is linear with the time
 ;; passed since the last check. This event store is meant for dev/testing purposes
 ;; only and should not be used in production. 
-(defrecord InMemoryEventStore [db last-check-time]
+(defrecord InMemoryEventStore [last-check-time atom-db]
   component/Lifecycle
   (start [component]
     (log/info "Starting local event store")
@@ -43,44 +51,39 @@
     component)
 
   EventStore
-  (store-event! [this event]
+  (store-event! [_ event]
     (let [timestamp (:start event)
-          db (:db this)]
-      (log/info "STORING EVENT" event)
+          db (:db atom-db)]
       (swap! db update-in [timestamp] conj event)))
 
-  (get-events [this timestamp]
-    (let [{:keys [db]} this
+  (get-events [_ timestamp]
+    (let [db (:db atom-db)
           all-timestamps (exc-inc-range @last-check-time timestamp)
           events (mapcat-eager #(get @db % '()) all-timestamps)]
       (swap! db #(apply dissoc % all-timestamps))
       (reset! last-check-time timestamp)
       events)))
 
-(defrecord MongoDBEventStore [mongo-opts db-name collection conn db]
+(defrecord MongoDBEventStore [collection mongo]
   component/Lifecycle
   (start [component]
     (log/info "Starting MongoDB event store")
-    (let [conn (mg/connect mongo-opts)]
-      (assoc component
-        :conn conn
-        :db (mg/get-db conn db-name))))
+    component)
 
   (stop [component]
     (log/info "Stopping MongoDB event store")
-    (mg/disconnect (:conn component))
-    (assoc component :db nil :conn nil))
+    component)
 
   EventStore
   (store-event! [this event]
     (let [timestamp (:start event)
-          {:keys [db collection]} this]
+          {:keys [db]} mongo]
       (mc/update db collection {:_id timestamp}
                  {$push {:events event}}
                  {:upsert true})))
 
   (get-events [this timestamp]
-    (let [{:keys [db collection]} this
+    (let [{:keys [db]} mongo
           records (mc/find-and-modify db collection
                                       {:_id {$lte timestamp}}
                                       {}
@@ -88,62 +91,56 @@
       (mapcat :events records))))
 
 
-(defn maybe-as-num [s]
-  (if (re-find #"^\d+$" s)
-    (BigInteger. s)
-    s))
-
-
-(defrecord SQLEventStore [db-spec table conn]
+(defrecord PostgresEventStore [table postgres serializer]
   component/Lifecycle
   (start [component]
-    (log/info "Starting SQL event store (" table ")")
-    (assoc component :conn (mk-connection-pool db-spec)))
+    (log/info "Starting Postgres event store (" table ")")
+    component)
 
   (stop [component]
-    (log/info "Stopping SQL event store(" table ")")
-    (assoc component :conn nil))
+    (log/info "Stopping Postgres event store(" table ")")
+    component)
 
   EventStore
   (store-event! [this event]
     (let [{:keys [id job-id start interval data]} event
-          iv (nonce/random-bytes 12)]
+          {:keys [conn]} postgres]
       (sql/insert! conn table {:id id
                                :job_id job-id
                                :start start
                                :interval (str interval)
-                               :data (serialize data iv)
-                               :iv iv})))
+                               :data (s/serialize serializer data)})))
 
   (get-events [this timestamp]
-    (let [query (str "UPDATE " (sql/quoted \" table)
+    (let [query (str "UPDATE " (quote-sql-ident table)
                      " SET is_expired = true"
                      " WHERE \"start\" <= ?"
                      " AND is_expired = false"
                      " RETURNING id, job_id, \"start\", \"interval\", data, iv")
+          {:keys [conn]} postgres
           events (sql/query conn [query timestamp])]
       (mapv (fn [row]
               (-> row
-                  (update-in [:data] #(deserialize % (:iv row)))
+                  (update-in [:data] #(s/deserialize serializer %))
                   (update-in [:interval] maybe-as-num)
-                  (rename-keys {:job_id :job-id})
-                  (dissoc :iv)))
+                  (rename-keys {:job_id :job-id})))
             events))))
 
-(defmulti new-event-store :type)
+(defmulti make-store
+  (fn [cfg]
+    (get-in cfg [:global :event-store-type])))
 
-(defmethod new-event-store :local
-  [{:keys [db last-check-time]}]
-  (map->InMemoryEventStore {:db db
-                            :last-check-time (atom (or last-check-time (utils/get-time)))}))
+(defmethod make-store :local
+  [_]
+  (map->InMemoryEventStore
+    {:last-check-time (atom (utils/get-time))}))
 
-(defmethod new-event-store :mongodb
-  [{:keys [mongo-opts db domain]}]
-  (map->MongoDBEventStore {:mongo-opts mongo-opts
-                           :db-name db
-                           :collection domain}))
+(defmethod make-store :mongo
+  [_]
+  (map->MongoDBEventStore
+    {:collection "events"}))
 
-(defmethod new-event-store :sql
-  [{:keys [db-spec domain]}]
-  (map->SQLEventStore {:db-spec db-spec
-                       :table domain}))
+(defmethod make-store :postgres
+  [_]
+  (map->PostgresEventStore
+    {:table "events"}))

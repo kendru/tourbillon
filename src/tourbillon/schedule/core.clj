@@ -7,21 +7,25 @@
             [taoensso.timbre :as log]
             [tourbillon.utils :as utils]))
 
+
 (defmulti send-event!
   (fn [scheduler event]
     (if (is-immediate? event)
       :immediate
       :delayed)))
 
+
 (defmethod send-event! :immediate [scheduler event]
   (let [{:keys [job-store subscriber-system]} scheduler]
     (log/info ["processing event now" event])
     (emit! job-store subscriber-system event)))
 
+
 (defmethod send-event! :delayed [scheduler event]
   (let [{:keys [event-store]} scheduler]
     (log/info ["processing event later" event])
     (event/store-event! event-store event)))
+
 
 (defn process-events!
   "Gets any new events from the event store and sends them to their respective jobs"
@@ -32,6 +36,7 @@
         (emit! job-store subscriber-system event)
         (when (is-recurring? event)
           (event/store-event! event-store (next-interval event)))))))
+
 
 (defrecord Scheduler [poll-freq thread-pool job-store event-store subscriber-system scheduler]
   component/Lifecycle
@@ -45,9 +50,10 @@
 
   (stop [component]
     (log/info "Stopping scheduler")
-        (at/stop scheduler)
-        (dissoc component :scheduler :job-store :event-store)))
+    (at/stop scheduler)
+    (dissoc component :scheduler :job-store :event-store)))
 
-(defn new-scheduler [poll-freq thread-pool]
+    
+(defn make-scheduler [poll-freq thread-pool]
   (map->Scheduler {:poll-freq poll-freq
                    :thread-pool thread-pool}))

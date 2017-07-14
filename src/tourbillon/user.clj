@@ -1,5 +1,5 @@
 (ns tourbillon.user
-  (:require [tourbillon.core :as core]
+  (:require [tourbillon.system :as system]
             [com.stuartsierra.component :as component]
             [clojure.tools.namespace.repl :refer [refresh]]))
 
@@ -7,7 +7,7 @@
 
 (defn init []
   (alter-var-root #'system
-    (constantly (core/system {:app-env "dev"}))))
+    (constantly (system/system))))
 
 (defn start []
   (alter-var-root #'system component/start))

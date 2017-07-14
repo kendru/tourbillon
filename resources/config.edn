@@ -1,0 +1,36 @@
+{:global {:object-store-type #keyword #or [#env OBJECT_STORE_TYPE :postgres]
+          :event-store-type #keyword #or [#env EVENT_STORE_TYPE :postgres]
+          :log-file #env LOG_FILE}
+ :web {:port #long #or [#env HTTP_PORT 3000]
+       :ip #or [#env HTTP_IP "0.0.0.0"]}
+ :secrets {:hmac #or [#env SECRET_HMAC
+                      #profile {:dev "s3cr3t"}]
+           :aes256-gcm #or [#env SECRET_AES256_GCM
+                            #profile {:dev "Aphnets3vI1Zbbct2wVJDG1/LXyxprpudjAQWS8oVjg="}]}
+ :postgres {:url #join ["jdbc:postgresql://"
+                        #or [#env PSQL_HOST "127.0.0.1"]
+                        ":"
+                        #or [#env PSQL_PORT #profile {:prod "5432"
+                                                      :dev "6543"}]
+                        "/"
+                        #or [#env PSQL_DATABASE "tourbillon"]]
+            :user #or [#env PSQL_USER "tourbillon"]
+            :password #or [#env PSQL_PASSWORD "s3cr3t"]
+            :init-pool-size #long #or [#env PSQL_INIT_POOL_SIZE 4]
+            :max-pool-size #long #or [#env PSQL_MAX_POOL_SIZE 20]
+            :partitions #long #or [#env PSQL_PARTITIONS 20]
+            :idle-time #long #or [#env PSQL_IDLE_TIME 60]}
+ :mongo {:host #or [#env MONGO_HOST "127.0.0.1"]
+         :port #long #or [#env MONGO_PORT 27017]
+         :database #or [#env MONGO_DATABASE "tourbillon"]}
+ :smtp {:host #env SMTP_HOST
+        :user #env SMTP_USER
+        :password #env SMTP_PASSWORD
+        :port #long #or [#env SMTP_PORT 24]
+        :sender #env SMTP_SENDER}
+ :twilio {:sid #env TWILIO_SID
+          :auth-token TWILIO_AUTH_TOKEN
+          :sender #env TWILIO_SENDER}
+ :serializer {:type #keyword #or [#env SERIALIZER_TYPE :encrypted]
+              :secret ^:ref [:secrets :aes256-gcm]}
+ :jwt {:secret ^:ref [:secrets :hmac]}}

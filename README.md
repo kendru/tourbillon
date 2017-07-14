@@ -29,6 +29,9 @@ Please see the API description page for details of the message specification.
 
 ## Todo
 
+**Note that the in-memory database is broken because it is storing everything in a single atom with no namespaces. Events and all objects
+in one big blob. Yuck!**
+
 1. Support a distributed set-up. Ideally, we should be able to run multiple instances in the same JVM, across JVM intances on a single machine, or across JVM instances on multiple machines.
 3. Support pluggable persistence layers, and include a adapters for ~~in-memory~~, ~~SQL~~, DynamoDb, Redis, and ~~Mongo~~ out of the box
 4. *Create client library*
@@ -39,7 +42,7 @@ Please see the API description page for details of the message specification.
 
 ## License
 
-Copyright © 2014-2016 Andrew S. Meredith
+Copyright © 2014-2017 Andrew S. Meredith
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
